@@ -242,13 +242,13 @@ if __name__ == "__main__":
                         help="The output directory (may exist)")
 
     parser.add_argument("--mrgsrc3dir", type=str,
-                        default="/data/L3/jmiller/archive_mrgsrc3",
+                        default="/data/L3/chs_master_match/input/mrgsrc3",
                         help="The mrgsrc3 directory: default %(default)s")
     parser.add_argument("--stkevt3dir", type=str,
-                        default="/data/dburke2/L3/rel2.0/master_match/convex_hulls/stkevt3",
+                        default="/data/L3/chs_master_match/input/stkevt3",
                         help="The stkevt3 directory: default %(default)s")
     parser.add_argument("--stkfov3dir", type=str,
-                        default="/data/dburke2/L3/rel2.0/master_match/convex_hulls/stkfov3",
+                        default="/data/L3/chs_master_match/input/stkfov3",
                         help="The stkfov3 directory: default %(default)s")
 
     args = parser.parse_args(sys.argv[1:])
