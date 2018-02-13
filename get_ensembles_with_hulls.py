@@ -9,14 +9,15 @@ Aim:
 
 From the ensemble list, which is assumed to have columns 'ensemble'
 and 'stack' and so is used to map between stack and ensemble
-identifier, and the stacklist, which contains a list of stacks
-(one per line) which contain stack-level hulls (i.e. MEXTSRC block
-has at least one row with STATUS=0), output a list of those
-ensembles which contain hulls.
-
-The output is to the screen, one ensemble per line.
+identifier, and the stacklist, which contains the name of the
+mrgsrc3 file (including trailing .gz but no directory specifier)
+and the number of valid stack-level hulls (i.e. MEXTSRC block
+has at least one row with STATUS=0), output those ensembles with
+hulls, along with the number of stack-level hulls in that stack.
 
 """
+
+from collections import defaultdict
 
 import pycrates
 import stk
@@ -26,7 +27,8 @@ def doit(ensemblename, stackname):
     """Find ensembles with hulls.
 
     The ensemble names are displayed to the screen, in ascending
-    order, one per line (so usable as a stack).
+    order, one per line, along with the total number of stack-level
+    hulls in the ensemble (they may overlap or not).
 
     Parameters
     ----------
@@ -34,7 +36,9 @@ def doit(ensemblename, stackname):
         The name of a file which contains columns ensemble and
         stack, and so gives the mapping from stack to ensemble.
     stackname : str
-        The name of an ASCII file which has one stack per line,
+        The name of an ASCII file which has two columns: the
+        name of the mrgsrc3 file (no directory) and the number
+        of valid hulls in that stack.
         and contains stacks with hulls.
 
     """
@@ -47,18 +51,33 @@ def doit(ensemblename, stackname):
 
     cr = None
 
-    ensembles = set([])
-    for stkname in stk.build("@" + stackname):
+    ensembles = defaultdict(lambda: 0)
+    cr = pycrates.read_file(stackname)
+    for mfile, nhulls in zip(cr.get_column(0).values,
+                             cr.get_column(1).values.astype(int)):
+        if nhulls < 1:
+            continue
+
+        idx = mfile.find('N')
+        if idx == -1:
+            raise IOError("Invalid mrgsrc3 file name " +
+                          "'{}'".format(mfile))
+
+        stackname = mfile[:idx]
         try:
-            ensembles.add(stackmap[stkname])
+            ensemblename = stackmap[stackname]
         except KeyError:
-            raise IOError("Unrecognized stack '{}'".format(stkname))
+            raise IOError("Unrecognized stack from " +
+                          "'{}'".format(mfile))
+
+        ensembles[ensemblename] += nhulls
 
     if len(ensembles) == 0:
         raise IOError("No ensembles found!")
 
-    for ensname in sorted(list(ensembles)):
-        print(ensname)
+    print("# ensemble nstackhulls")
+    for ensname in sorted(list(ensembles.keys())):
+        print("{} {}".format(ensname, ensembles[ensname]))
 
 
 if __name__ == "__main__":
@@ -70,4 +89,3 @@ if __name__ == "__main__":
         sys.exit(1)
 
     doit(sys.argv[1], sys.argv[2])
-
