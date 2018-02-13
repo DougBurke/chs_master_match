@@ -866,7 +866,7 @@ if __name__ == "__main__":
                         default=ENSEMBLEFILE,
                         help="The ensemble to stack mapping: default %(default)s")
     parser.add_argument("--mrgsrc3dir",
-                        default="/data/L3/jmiller/archive_mrgsrc3",
+                        default="/data/L3/chs_master_match/input/mrgsrc3",
                         help="The mrgsrc3 directory: default %(default)s")
 
     args = parser.parse_args(sys.argv[1:])
