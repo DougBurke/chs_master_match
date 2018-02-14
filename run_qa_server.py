@@ -1796,6 +1796,12 @@ function setupJS9(img, ensemble, masterid, stack, winid) {
   // Make sure we remove the onchange handler from these extra layers
   layerOpts.onchange = null;
 
+  // Eric hopes this will address the half-pixel offset on rebin
+  // but I need to investigate it further to find out what is
+  // going in.
+  //
+  // layerOpts.dowcsstr = true;
+
   for (let name of [stackLayer, originalLayer, convexLayer]) {
     JS9.NewShapeLayer(name, layerOpts, opts);
   }
