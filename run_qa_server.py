@@ -358,10 +358,11 @@ def parse_datadir(datadir):
         log("LOG: no ensemble dirs found in {}".format(datadir))
         return None
 
-    # HACK: use first 20 ensembles to save time
+    # HACK: use a subset of ensembles to save time
     #
-    log("DEBUG: restricting to first 20 ensembles")
-    ensembledirs = ensembledirs[:20]
+    nmax = 60
+    log("DEBUG: restricting to first {} ensembles".format(nmax))
+    ensembledirs = ensembledirs[:nmax]
 
     # Get the latest version of each ensemble
     #
@@ -806,96 +807,10 @@ def create_index_page(datadir):
     out = "<DOCTYPE html><html><head><meta charset='UTF-8'>"
     out += "<title>CHS review</title>"
     out += "<link rel='stylesheet' type='text/css' "
-    out += "href='/css/index.css'/>"
-    out += """<script type='text/javascript'>
-function plural(x) { if (x === 1) { return ""; } else { return "s"; } }
-
-function updatePage(json) {
-  var ntodos = json.todos.length;
-  var nreviews = json.reviews.length;
-  var ncompleted = json.completed.length;
-
-  function nens(n) { return n.toString() + " ensemble" + plural(n); }
-  document.getElementById("ntodos").innerHTML = nens(ntodos);
-  document.getElementById("nreviews").innerHTML = nens(nreviews);
-  document.getElementById("ncompleted").innerHTML = nens(ncompleted);
-
-  // TODO: do we have to clear out these divs?
-  var parent = document.getElementById("todo");
-  for (let i = 0; i < ntodos; i++) {
-    var ens = json.todos[i];
-
-    // TODO: need to work out the number of remaining hulls
-    //       or just do away with this concept (but would be nice
-    //       to know which ones you've worked on)
-    //
-    var el = document.createElement("a");
-    el.className = "ensemble";
-    el.href = ens['name'];
-    el.innerHTML = ens['name'] + "<br>" +
-        ens['nmasters'].toString() +
-        " remaining of " +
-        ens['nmasters'].toString() + ", " +
-        ens['nstacks'].toString() + " stack" + plural(ens['nstacks']) +
-        "<br>N/A";
-
-    parent.appendChild(el);
-  }
-
-  parent = document.getElementById("review");
-  for (let i = 0; i < nreviews; i++) {
-    var ens = json.reviews[i];
-
-    // TODO: need to work out the number of remaining hulls
-    var el = document.createElement("a");
-    el.className = "ensemble";
-    el.href = ens['name'];
-    el.innerHTML = ens['name'] + "<br>" +
-        ens['nmasters'].toString() + " hulls, " +
-        ens['nstacks'].toString() + " stack" + plural(ens['nstacks']);
-
-    parent.appendChild(el);
-  }
-
-  parent = document.getElementById("completed");
-  for (let i = 0; i < ncompleted; i++) {
-    var ens = json.completed[i];
-
-    // TODO: need to work out the number of remaining hulls
-    var el = document.createElement("a");
-    el.className = "ensemble";
-    el.href = ens['name'];
-    el.innerHTML = ens['name'] + "<br>" +
-        ens['nmasters'].toString() + " hulls, " +
-        ens['nstacks'].toString() + " stack" + plural(ens['nstacks']);
-
-    parent.appendChild(el);
-  }
-}
-
-function initialize() {
-  var httpRequest = new XMLHttpRequest();
-  if (!httpRequest) {
-      alert("Unable to create a XMLHttpRequest!");
-      return;
-  }
-  httpRequest.addEventListener("load", function() {
-    updatePage(httpRequest.response);
-  });
-  httpRequest.addEventListener("error", function() {
-      alert("Unable to load data!");
-  });
-  httpRequest.addEventListener("abort", function() {
-      alert("Unable to load data!");
-  });
-
-  // Do I need to add a cache-busting identifier?
-  httpRequest.open('GET', '/api/summary?' +
-                   (new Date()).getTime());
-  httpRequest.responseType = 'json';
-  httpRequest.send();
-}
-</script></head><body onload='initialize();'>"""
+    out += "href='/css/index.css'>"
+    out += "<script src='/js/js9/js/spin.js'></script>"
+    out += "<script src='/js/index.js'></script>"
+    out += "</head><body onload='initialize();'>"
 
     out += "<h1>Ensemble selection page</h1>"
     out += "<div id='summary'>"
@@ -964,7 +879,8 @@ def create_ensemble_index_page(datadir, ensemble):
     out = "<DOCTYPE html><html><head><meta charset='UTF-8'>"
     out += "<title>{}</title>".format(ensemble)
     out += "<link rel='stylesheet' type='text/css' "
-    out += "href='/css/ensemble.css'/>"
+    out += "href='/css/ensemble.css'>"
+    out += "<script src='/js/js9/js/spin.js'></script>"
     out += """<script type='text/javascript'>
 var state;
 
@@ -1088,12 +1004,24 @@ function setVersion(revision) {
   }
 }
 
+const spinopts = {
+    color: "#FF0000", opacity: 0.4,
+    radius: 20, length: 20, width: 7
+};
+
 function initialize() {
   let httpRequest = new XMLHttpRequest();
   if (!httpRequest) {
       alert("Unable to create a XMLHttpRequest!");
       return;
   }
+
+  // Add the spinner to the whole page
+  //
+  let body = document.getElementsByTagName("body")[0];
+  let spinner = new Spinner(spinopts);
+  spinner.spin(body);
+
   httpRequest.addEventListener("load", function() {
     updatePage(httpRequest.response);
   });
@@ -1102,6 +1030,9 @@ function initialize() {
   });
   httpRequest.addEventListener("abort", function() {
       alert("Unable to load data!");
+  });
+  httpRequest.addEventListener("loadend", function() {
+      spinner.stop();
   });
 
   // Do I need to add a cache-busting identifier?
@@ -1554,11 +1485,13 @@ def create_master_hull_page(datadir, rawdir,
     #
     # This adds window.convexHull
     #
-    out += '<script type="text/javascript" src="/js/convexhull.js"></script>'
+    out += '<script type="text/javascript" '
+    out += 'src="/js/extern/convexhull.js"></script>'
 
     # WebSAMP
     #
-    out += '<script type="text/javascript" src="/js/samp.js"></script>'
+    out += '<script type="text/javascript" '
+    out += 'src="/js/extern/samp.js"></script>'
 
     # Some of the javascript code - handling multiple pages - could
     # only be included when needed (since it is known at this point
@@ -1566,7 +1499,7 @@ def create_master_hull_page(datadir, rawdir,
     # support this.
     #
     out += "<link rel='stylesheet' type='text/css' "
-    out += "href='/css/hull.css'/>"
+    out += "href='/css/hull.css'>"
     out += """<script type='text/javascript'>
 var ensemble = '"""
 
