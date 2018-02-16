@@ -88,7 +88,7 @@ except ImportError:
     sys.exit(1)
 
 
-def log(msg):
+def log(msg, level='LOG'):
     """Log a message.
 
     Parameters
@@ -97,7 +97,31 @@ def log(msg):
         The message
     """
 
-    print("LOG: {}".format(msg))
+    print("{}: {}".format(level, msg))
+
+
+def dbg(msg):
+    """Log a debug message.
+
+    Parameters
+    ----------
+    msg: str
+        The message
+    """
+
+    log(msg, level='DEBUG')
+
+
+def warn(msg):
+    """Log a warning message.
+
+    Parameters
+    ----------
+    msg: str
+        The message
+    """
+
+    log(msg, level='WARNING')
 
 
 def errlog(msg):
@@ -109,7 +133,7 @@ def errlog(msg):
         The message
     """
 
-    log("ERROR: {}".format(msg))
+    log(msg, level='ERROR')
 
 
 class CHSServer(HTTPServer):
@@ -202,7 +226,7 @@ def read_json(infile):
             jcts = json.loads(cts)
 
     except Exception as exc:
-        print("LOG: error reading JSON from {}\n{}".format(infile, exc))
+        errlog("error reading JSON from {}\n{}".format(infile, exc))
         return None
 
     return jcts
@@ -285,8 +309,8 @@ hmmm, the JSON data has {"status": "todo", "stackmap": {"acisfJ1705367m403832_00
     inpat = os.path.join(datadir, ensemble, pat)
     matches = glob.glob(inpat)
     if len(matches) == 0:
-        print("LOG: no field.json files found for ensemble " +
-              "{} - {}".format(ensemble, inpat))
+        errlog("no field.json files found for ensemble " +
+               "{} - {}".format(ensemble, inpat))
         return None
 
     store = {'versions': {}}
@@ -298,13 +322,13 @@ hmmm, the JSON data has {"status": "todo", "stackmap": {"acisfJ1705367m403832_00
         try:
             v = jcts['revision']
         except KeyError:
-            print("LOG: missing revision keyword in {}".format(match))
+            log("missing revision keyword in {}".format(match))
             continue
 
         # this should not happen, so do not worry too much about the
         # error handler
         if v in store['versions']:
-            print("LOG: multiple revision={} in {}".format(v, match))
+            log("multiple revision={} in {}".format(v, match))
             continue
 
         hulls = []
@@ -318,18 +342,19 @@ hmmm, the JSON data has {"status": "todo", "stackmap": {"acisfJ1705367m403832_00
             hulls.append(hull)
 
         if len(hulls) == 0:
-            print("LOG: no masters for revsision {} in {}".format(v, match))
+            log("no masters for revision {} in {}".format(v, match))
             continue
 
         if 'masters' in jcts:
-            print("LOG: overwriting masters setting in {}".format(match))
+            log("overwriting masters setting in {}".format(match))
 
         jcts['masters'] = hulls
         store['versions'][v] = jcts
 
     revs = list(store['versions'].keys())
     if len(revs) == 0:
-        print("LOG: no JSON data read from ensemble: {} {}".format(datadir, ensemble))
+        errlog("no JSON data read from ensemble: " +
+               "{} {}".format(datadir, ensemble))
         return None
 
     revs = sorted(revs, key=int, reverse=True)
@@ -361,13 +386,13 @@ def parse_datadir(datadir):
     pat = os.path.join(datadir, "ens*")
     ensembledirs = glob.glob(pat)
     if len(ensembledirs) == 0:
-        log("LOG: no ensemble dirs found in {}".format(datadir))
+        errlog("no ensemble dirs found in {}".format(datadir))
         return None
 
     # HACK: use a subset of ensembles to save time
     #
     nmax = 60
-    log("DEBUG: restricting to first {} ensembles".format(nmax))
+    dbg("restricting to first {} ensembles".format(nmax))
     ensembledirs = ensembledirs[:nmax]
 
     # Get the latest version of each ensemble
@@ -499,23 +524,23 @@ def read_ds9_region(infile):
 
                 if csys is None:
                     if l.find(' ') != -1:
-                        print("LOG: expected coordsys, found " +
-                              "[{}] in {}".format(l, infile))
+                        errlog("expected coordsys, found " +
+                               "[{}] in {}".format(l, infile))
                         return None
 
                     csys = l
                     continue
 
                 if not l.startswith('polygon('):
-                    print("LOG: expected polygon(...), found " +
-                          "[{}] in {}".format(l, infile))
+                    errlog("expected polygon(...), found " +
+                           "[{}] in {}".format(l, infile))
                     return None
 
                 return "{}; {}".format(csys, l)
 
     except IOError as exc:
-        print("LOG: can not read region file:" +
-              "\n{}\n{}".format(infile, exc))
+        errlog("can not read region file:" +
+               "\n{}\n{}".format(infile, exc))
         return None
 
 
@@ -603,17 +628,17 @@ def find_master_center(infile, masterid):
     cr = pycrates.read_file(fname)
     nrows = cr.get_nrows()
     if nrows == 0:
-        print("ERROR: no row matching {}".format(fname))
+        errlog("no row matching {}".format(fname))
         return None
 
     elif nrows > 1:
-        print("ERROR: multiple rows matching {}".format(fname))
+        errlog("multiple rows matching {}".format(fname))
         return None
 
     # NOTE: QA cases have NVERTEX=0
     nv = cr.NVERTEX.values[0]
     if nv < 3:
-        print("ERROR: nvertex={} for {}".format(nv, fname))
+        errlog("nvertex={} for {}".format(nv, fname))
         return None
 
     eqpos = cr.EQPOS.values[0, :, :nv]
@@ -652,7 +677,7 @@ def get_data_master(datadir, rawdir, ensemble, masterid):
         version = state['latest_version']
         masters = state['versions'][version]['masters']
     except KeyError as exc:
-        print("LOG: ensemble json missing key {}".format(exc))
+        errlog("ensemble json missing key {}".format(exc))
         return None
 
     mid = "{:03d}".format(masterid)
@@ -663,7 +688,7 @@ def get_data_master(datadir, rawdir, ensemble, masterid):
             break
 
     if hull is None:
-        print("LOG: missing hull {}".format(mid))
+        log("missing hull {}".format(mid))
         return None
 
     # At this point we are happy that ensemble/masterid point to a
@@ -675,14 +700,14 @@ def get_data_master(datadir, rawdir, ensemble, masterid):
     #
     dname = os.path.join(rawdir, ensemble)
     if not os.path.isdir(dname):
-        print("LOG: ERROR missing rawdir {}".format(dname))
+        errlog("missing rawdir {}".format(dname))
         return None
 
     hullfile = os.path.join(dname,
                             'master_hulls.' +
                             '{}.v{}.fits'.format(ensemble, version))
     if not os.path.isfile(hullfile):
-        print("LOG: ERROR missing hullfile {}".format(hullfile))
+        errlog("missing hullfile {}".format(hullfile))
         return None
 
     infile = "{}[master_id={}][cols stackid, component]".format(hullfile,
@@ -690,15 +715,15 @@ def get_data_master(datadir, rawdir, ensemble, masterid):
     cr = pycrates.read_file(infile)
     nrows = cr.get_nrows()
     if nrows == 0:
-        print("LOG: ERROR no hull data from {}".format(infile))
+        errlog("no hull data from {}".format(infile))
         return None
 
     # Just warn, nbut do not error out, if there's a difference
     #
     if nrows != hull['ncpts']:
-        print("LOG: WARNING expected {} but got {} from {}".format(hull['ncpts'],
-                                                                   nrows,
-                                                                   infile))
+        warn("expected {} but got {} from {}".format(hull['ncpts'],
+                                                     nrows,
+                                                     infile))
 
     stackmap = {}
     nstacks = cr.get_key_value('STKIDNUM')
@@ -965,7 +990,7 @@ def create_master_hull_page(env,
         return 404, out
 
     elif len(hulls) > 1:
-        print("LOG: hulls = {}".format(hulls))
+        log("hulls = {}".format(hulls))
         out = "<!DOCTYPE html><html><head><title>INTERNAL ERROR</title>"
         out += "</head><body><p>FOUND MULTIPLE COPIES - see Doug!</p></body></html>"
         return 404, out
@@ -980,7 +1005,7 @@ def create_master_hull_page(env,
     #
     dname = os.path.join(rawdir, ensemble)
     if not os.path.isdir(dname):
-        print("LOG: ERROR missing rawdir {}".format(dname))
+        errlog("missing rawdir {}".format(dname))
         out = "<!DOCTYPE html><html><head><title>INTERNAL ERROR</title>"
         out += "</head><body><p>Missing dir={}".format(dname)
         out += + "- see Doug!</p></body></html>"
@@ -990,7 +1015,7 @@ def create_master_hull_page(env,
                             'master_hulls.' +
                             '{}.v{}.fits'.format(ensemble, revstr))
     if not os.path.isfile(hullfile):
-        print("LOG: ERROR missing hullfile {}".format(hullfile))
+        errlog("missing hullfile {}".format(hullfile))
         out = "<!DOCTYPE html><html><head><title>INTERNAL ERROR</title>"
         out += "</head><body><p>Missing hullfile={}".format(hullfile)
         out += + "- see Doug!</p></body></html>"
@@ -1011,7 +1036,7 @@ def create_master_hull_page(env,
     try:
         ds = pycrates.CrateDataset(hullfile, mode='r')
     except IOError as exc:
-        print("LOG: unable to read hullfile {} - {}".format(hullfile, exc))
+        errlog("unable to read hullfile {} - {}".format(hullfile, exc))
         out = "<!DOCTYPE html><html><head><title>INTERNAL ERROR</title>"
         out += "</head><body><p>Error reading "
         out += "hullfile={}\nreason=\n{}".format(hullfile, exc)
@@ -1021,7 +1046,7 @@ def create_master_hull_page(env,
     try:
         cr = ds.get_crate('SRCMATCH')
     except IndexError as exc:
-        print("LOG: unable to read SRCMATCH from hullfile {} - {}".format(hullfile, exc))
+        errlog("unable to read SRCMATCH from hullfile {} - {}".format(hullfile, exc))
         out = "<!DOCTYPE html><html><head><title>INTERNAL ERROR</title>"
         out += "</head><body><p>Error reading SRCMATCH block of "
         out += "hullfile={}\nreason=\n{}".format(hullfile, exc)
@@ -1032,7 +1057,7 @@ def create_master_hull_page(env,
     #
     nstks = cr.get_key_value('STKIDNUM')
     if nstks is None:
-        print("LOG: missing STKIDNUM keyword in hullfile {} - {}".format(hullfile))
+        errlog("missing STKIDNUM keyword in hullfile {} - {}".format(hullfile))
         out = "<!DOCTYPE html><html><head><title>INTERNAL ERROR</title>"
         out += "</head><body><p>No STKIDNUM keyword in "
         out += "hullfile={}\n".format(hullfile)
@@ -1044,7 +1069,7 @@ def create_master_hull_page(env,
         key = "STKID{:03d}".format(i)
         val = cr.get_key_value(key)
         if val is None:
-            print("LOG: missing {} keyword in hullfile {} - {}".format(key, hullfile))
+            errlog("missing {} keyword in hullfile {} - {}".format(key, hullfile))
             out = "<!DOCTYPE html><html><head><title>INTERNAL ERROR</title>"
             out += "</head><body><p>No {} keyword in ".format(key)
             out += "hullfile={}\n".format(hullfile)
@@ -1098,7 +1123,7 @@ def create_master_hull_page(env,
     try:
         cr = ds.get_crate('SRCLIST')
     except IndexError as exc:
-        print("LOG: unable to read SRCLIST from hullfile {} - {}".format(hullfile, exc))
+        errlog("unable to read SRCLIST from hullfile {} - {}".format(hullfile, exc))
         out = "<!DOCTYPE html><html><head><title>INTERNAL ERROR</title>"
         out += "</head><body><p>Error reading SRCLIST block of "
         out += "hullfile={}\nreason=\n{}".format(hullfile, exc)
@@ -1126,7 +1151,7 @@ def create_master_hull_page(env,
                                   'qa.{}.v{}.fits'.format(mid,
                                                           revstr))
             if not os.path.isfile(qafile):
-                print("LOG: ERROR missing qafile {}".format(qafile))
+                errlog("missing qafile {}".format(qafile))
                 out = "<!DOCTYPE html><html><head><title>INTERNAL ERROR</title>"
                 out += "</head><body><p>Missing qafile={}".format(qafile)
                 out += "- see Doug!</p></body></html>"
@@ -1135,7 +1160,7 @@ def create_master_hull_page(env,
             try:
                 qcr = pycrates.read_file(qafile + "[cols nvertex, eqpos]")
             except IOError as exc:
-                print("LOG: ERROR unable to read qafile {}".format(qafile))
+                errlog("unable to read qafile {}".format(qafile))
                 out = "<!DOCTYPE html><html><head><title>INTERNAL ERROR</title>"
                 out += "</head><body><p>Unable to read "
                 out += "qafile={}\nerror=\n{}".format(qafile, exc)
@@ -1202,7 +1227,7 @@ def create_master_hull_page(env,
                                                             revstr))
         regstr = read_ds9_region(regfile)
         if regstr is None:
-            print("LOG missing stack region file {}".format(regfile))
+            log("missing stack region file {}".format(regfile))
             out = "<!DOCTYPE html><html><head><title>INTERNAL ERROR</title>"
             out += "</head><body><p>Unable to read stack "
             out += "regfile={}".format(regfile)
@@ -1217,7 +1242,7 @@ def create_master_hull_page(env,
             try:
                 stklbl = "{:03d}".format(stack_map[stk])
             except KeyError:
-                # THIS SHOULD BE CONSIDERED AN ERROR
+                # TODO: THIS SHOULD BE CONSIDERED AN ERROR
                 stklbl = stk
 
             slabel = '{}.{:02d}'.format(stklbl, cpt)
@@ -1235,1007 +1260,35 @@ def create_master_hull_page(env,
             shull['mancode'] = mancode_by_component[key]
         except KeyError:
             # this should not happen
-            pass
+            log("key is missing in mancode_by_component: {}".format(key))
+            # pass
 
         store.append(shull)
 
-    """ Not quite ready yet
+    # Ensure data needed by the templates is present (this should
+    # be cleaned up)
+    #
+    for h in info['masters']:
+        h['masterid_int'] = int(h['masterid'])
+
     return apply_template(env, 'masterhull.html',
                           {'ensemble': ensemble,
                            'revstr': revstr,
                            'mid': mid,
                            'masterid': masterid,
                            'npages': hull['npages'],
-                           'stack_band': json.dumps(stack_band),
-                           'hull_store': json.dumps(hull_store),
-                           'stackhulls': json.dumps(stack_polys),
-                           'username': os.getlogin()});
-    """
-
-    out = "<!DOCTYPE html><html><head><meta charset='UTF-8'>"
-    out += "<title>{}: v{} hull {}</title>".format(ensemble,
-                                                   revstr,
-                                                   mid)
-
-    # JS9 support
-    out += '<link type="text/css" rel="stylesheet" href="/js/js9/js9support.css">'
-    out += '<link type="text/css" rel="stylesheet" href="/js/js9/js9.css">'
-    out += '<link rel="apple-touch-icon" href="/js/js9/images/js9-apple-touch-icon.png">'
-    out += '<script type="text/javascript" src="/js/js9prefs-chs.js"></script>'
-    out += '<script type="text/javascript" src="/js/js9/js9support.min.js"></script>'
-    out += '<script type="text/javascript" src="/js/js9/js9.min.js"></script>'
-    out += '<script type="text/javascript" src="/js/js9/js9plugins.js"></script>'
-
-    # Extra JS code
-    #
-    # This adds window.convexHull
-    #
-    out += '<script type="text/javascript" '
-    out += 'src="/js/extern/convexhull.js"></script>'
-
-    # WebSAMP
-    #
-    out += '<script type="text/javascript" '
-    out += 'src="/js/extern/samp.js"></script>'
-
-    # Some of the javascript code - handling multiple pages - could
-    # only be included when needed (since it is known at this point
-    # whether it is needed), but it's not worth the effort to
-    # support this.
-    #
-    out += "<link rel='stylesheet' type='text/css' "
-    out += "href='/css/hull.css'>"
-    out += """<script type='text/javascript'>
-var ensemble = '"""
-
-    out += ensemble
-    out += """';
-var revision = '"""
-    out += revstr
-    out += """';
-var npages = """
-    out += str(hull['npages'])
-    out += """;
-var state;
-
-var pageNum;
-var imageScale = 'log10';
-
-// Change to the given page and scaling.
-//
-function changePage() {
-  let pageStr = pageNum.toString();
-  if (pageNum < 10) { pageStr = "00" + pageStr; }
-  else if (pageNum < 100) { pageStr = "0" + pageStr; }
-
-  const img = '/img/' + ensemble + '/hull.' + ensemble + '."""
-
-    out += mid + ".p' + pageStr + '.v" + revstr
-    out += """.' + imageScale + '.png';
-
-  document.getElementById('pageview').src = img;
-}
-
-function setPage(newPage) {
-  if ((newPage < 1) || (newPage > npages)) {
-    alert("Internal error: newPage = " + newPage.toString());
-    return;
-  }
-
-  pageNum = newPage;
-  changePage();
-}
-
-function setScaling(newScale) {
-  imageScale = newScale;
-  changePage();
-}
-
-// Map from stack value to the detected energy band.
-// This is tricky because for multiple components there is
-// no guarantee that the band is the same for the different
-// components. So the choice is either to go for a component
-// view, or to either pick one band or combine them.
-// Thew assumption is that this has already been decided by
-// the time this JS code has been written out.
-//
-var enbands = """
-
-    out += json.dumps(stack_band)
-    out += """;
-
-// Store the region information for this *ensemble*; that is,
-// provide coordinates (WCS) for all master hulls and stacks.
-//
-// This allows the UI to then decide whether to show all this
-// information or not.
-//
-var regionstore = {"""
-
-    out += "'masterhulls': " + json.dumps(hull_store) + ","
-    out += "'stackhulls': " + json.dumps(stack_polys)
-    out += """};
-
-// pan to this position; opts is the argument to pass
-// to JS9 commands to determine the window to use.
-// wcs contains ra and dec fields.
-//
-function goToRaDec(wcs, opts) {
-  const pix = JS9.WCSToPix(wcs.ra, wcs.dec, opts);
-  JS9.SetPan(pix.x, pix.y, opts);
-}
-
-// Finalize the widgets in the window and add the regions.
-//
-function finalizeJS9Display(ensemble, masterid, stack, winid) {
-
-  return function(img) {
-    setupJS9(img, ensemble, masterid, stack, winid);
-    addRegionsToJS9(img, ensemble, masterid, stack, winid);
-
-/***
-    const out = addRegionToJS9(img, ensemble, masterid, stack, winid,
-                             data);
-    updateJS9StackCounter(winid, out.nhulls);
-    const opts = {display: img};
-    if (typeof(out.center) !== "undefined") {
-      goToRaDec(out.center, opts);
-    }
-***/
-  };
-}
-
-function _old_finalizeJS9Display(ensemble, masterid, stack, winid) {
-  return function (img) {
-    $.ajax({url: '/regions/ensemble/' + ensemble +
-                 '/' + masterid.toString(),
-            dataType: 'json'})
-     .done((data, textStatus) => {
-       setupJS9Widgets(img, ensemble, masterid, stack, winid);
-       const out = addRegionToJS9(img, ensemble, masterid, stack, winid,
-                                  data);
-       updateJS9StackCounter(winid, out.nhulls);
-       const opts = {display: img};
-       if (typeof(out.center) !== "undefined") {
-          goToRaDec(out.center, opts);
-       }
-     });
-  };
-}
-
-//   - stack      for stack-level hulls
-//   - original   the input 'master-level' hulls
-//   - convex     the convex hull calculated from the current hull
-//   - regions    the user-editable hull
-//                i.e. this is the default regions layer
-//
-// Only the latter is user-editable or selectable (at least
-// directly). For now we use the "standard" regions layer
-// for this
-//
-const stackLayer = 'stack';
-const convexLayer = 'convex';
-const originalLayer = 'original';
-const masterLayer = 'regions';
-
-// Customize the JS9 display window
-//
-// winid is the base HTML id of the "light window" containing
-// the JS9 display.
-//
-// Is also sets up the layers.
-//
-function setupJS9(img, ensemble, masterid, stack, winid) {
-
-  // Hard code logic for the parent element (could find it by
-  // hunting up the tree but can not be bothered at the moment)
-  //
-  const container = document.getElementById('d' + winid);
-
-  // Add handlers for the user buttons:
-  //   - blur
-  //   - rebin
-  //   - reload region
-  //   - zoom
-  //
-  const opts = {display: img};
-  let btns = container.getElementsByClassName("sigma");
-  for (let i = 0; i < btns.length; i++) {
-    btns[i].addEventListener("change", (e) => {
-      JS9.GaussBlurData(e.target.value, opts);
-    });
-  }
-
-  const sigma0 = document.getElementById(winid + "sigma0");
-
-  btns = container.getElementsByClassName("binsize");
-  for (let i = 0; i < btns.length; i++) {
-    btns[i].addEventListener("change", (e) => {
-
-      // What is the current position - I am not too bothered
-      // if I do not calculate the exact center, as there is
-      // an effective zoom in/out going on here due to the
-      // change in binning - but let's see if this is visually
-      // confusing (the issue is if I am really calculating the
-      // center of the image here).
-      //
-      const idata = JS9.GetImageData(false, opts);
-
-      // This does not seem to be working as intended!
-      const wcs = JS9.PixToWCS(idata.width / 2, idata.height / 2, opts);
-
-      JS9.DisplaySection({bin: e.target.value}, opts);
-
-      // Could perhaps just jump to the master hull
-      // goToRaDec(wcs, opts);  not working well
-
-      // reset the blur button to 0 since rebinning removes
-      // the blurring automatically
-      sigma0.checked = true;
-    });
-  }
-
-  // When reloading the regions, delete all the existing ones
-  // as a precaution. The region info is reloaded from disk
-  // (an alternative would be to just cache the data and re-use
-  // it).
-  //
-  document.getElementById(winid + 'ReloadRegions')
-    .addEventListener("click", (e) => {
-      JS9.RemoveRegions("all", opts);
-      $.ajax({url: '/regions/ensemble/' + ensemble +
-                   '/' + masterid.toString(),
-              dataType: 'json'})
-       .done((data, textStatus) => {
-         addRegionToJS9(img, ensemble, masterid, stack, winid, data);
-       });
-    });
-
-  container.getElementsByClassName("zoomin")[0]
-     .addEventListener("click", (e) => { JS9.SetZoom("in", opts); });
-  container.getElementsByClassName("zoomout")[0]
-     .addEventListener("click", (e) => { JS9.SetZoom("out", opts); });
-
-  // toggle the panner; it looks like need to give winid to display,
-  // not img.
-  //
-  document.getElementById(winid + 'ShowPanner')
-      .addEventListener("click", (e) => { JS9.DisplayPlugin('panner',
-                                                            {display: winid}); });
-
-  // Set up the layers. We have to base the options on
-  // JS9.Regions.opts to get "sensible" behavior.
-  //
-  let layerOpts = Object.assign({}, JS9.Regions.opts);
-  for (let name of ['movable', 'rotatable', 'resizable', 'evented']) {
-    layerOpts[name] = false;
-  }
-
-  // Make sure we remove the onchange handler from these extra layers
-  layerOpts.onchange = null;
-
-  // Eric hopes this will address the half-pixel offset on rebin
-  // but I need to investigate it further to find out what is
-  // going in.
-  //
-  // layerOpts.dowcsstr = true;
-
-  for (let name of [stackLayer, originalLayer, convexLayer]) {
-    JS9.NewShapeLayer(name, layerOpts, opts);
-  }
-}
-
-// The layer argument was an attempt to allow shapes in different
-// layers, to better support interactivity, but it doesn't quite
-// work right as is and I have a (hopefully) working solution
-// for the interactivity.
-//
-function add_hull_to_js9(hull, opts, win, layer='regions') {
-
-  // Need to convert to image coordinates
-  const pts = [];
-  for (let i = 0; i < hull.ra.length; i++) {
-    pts.push(JS9.WCSToPix(hull.ra[i], hull.dec[i], win));
-  }
-
-  // Need to set the label
-  const shape = {shape: 'polygon', pts: pts};
-  if (typeof(hull.label) !== "undefined") {
-    shape.text = hull.label;
-  }
-  JS9.AddShapes(layer, shape, opts, win);
-  // JS9.AddRegions(shape, opts, win);
-
-}
-
-
-// Add the stack-level and master hull(s) to the JS9 window.
-//
-// Stack level hulls are drawn first (maybe in a different layer?)
-//
-function addRegionsToJS9(img, ensemble, masterid, stack, regions) {
-
-  let stackhulls = regionstore.stackhulls[stack];
-  if (typeof stackhulls === "undefined") {
-    alert("no stack-level hulls found for " + stack);
-    return;
-  }
-
-  let display = {display: img};
-
-  let linestyle = [1];
-  let hullOpts = {color: 'orange',
-                  strokeDashArray: linestyle,
-                  changeable: false,
-                  tags: 'stack'};
-
-  for (let shull of stackhulls) {
-    // linestyle: solid for mancode is 0, otherwise
-    // dotted.
-    //
-    // wanted to add strokeWidth to increase the width, but can
-    // not get it to work
-    //
-    if (shull.mancode === 0) {
-      delete hullOpts.strokeDashArray;
-    } else {
-      hullOpts.strokeDashArray = linestyle;
-    }
-    add_hull_to_js9(shull, hullOpts, display, stackLayer);
-  }
-
-  /*
-   * TODO: the tag should act as a unique identifier
-   *       which will be useful when supporting QA cases
-   *       (when can have multiple hulls).
-   */
-  let masterhull = regionstore.masterhulls[masterid];
-  if (typeof masterhull === "undefined") {
-    alert("No master hull found!");
-    return;
-  }
-
-  if (masterhull.wcs.length === 0) {
-    console.log("We have no master hull information for " +
-                ensemble + " " + masterid.toString() + "!");
-    return;
-  }
-
-  hullOpts = {movable: false,
-              rotatable: false,
-              resizable: false,
-              tags: 'master'};
-
-  let ras = [];
-  let decs = []
-
-  const origOpts = Object.assign({}, hullOpts);
-  origOpts.color = 'white';
-  origOpts.strokeDashArray = [3, 3];
-
-  for (let hull of masterhull.wcs) {
-    add_hull_to_js9(hull, origOpts, display, originalLayer);
-    add_hull_to_js9(hull, hullOpts, display, masterLayer);
-    ras.push(hull.ra0);
-    decs.push(hull.dec0);
-  }
-
-  // Pick the "middle" point if there are multiple master hulls (e.g. QA).
-  // This fails if the hulls straddle ra=0/360.
-  //
-  let ra0 = 0;
-  let dec0 = 0;
-  if (ras.length > 1) {
-    ra0 = 0.5 + (Math.min(...ras) + Math.max(...ras));
-    dec0 = 0.5 + (Math.min(...decs) + Math.max(...decs));
-  } else {
-    ra0 = ras[0];
-    dec0 = decs[0];
-  }
-  goToRaDec({ra: ra0, dec: dec0}, display);
-}
-
-// The following is OLD
-//
-// Returns information useful when the display is being created,
-// but not when the regions are being re-created.
-//
-// TODO: rework this now moving knowledge into JS
-//
-function addRegionToJS9(img, ensemble, masterid, stack, winid,
-                        regions) {
-
-  /* can have multiple components for a stack */
-  let linestyle;
-  let nstackhulls = 0;
-
-  const js9win = {display: img};
-
-  const hulls = [];
-  for (let i = 0; i < regions.stacks.length; i++) {
-    let shull = regions.stacks[i];
-    if (shull.stack === stack) {
-
-      hulls.push(shull);
-
-      /* experiment with making stack-level hulls "fixed", but
-         I can imagine this could be annoying at times (useful
-         at others) */
-      linestyle = [1];  /* how to change this */
-
-      add_hull_to_js9(shull,
-                      {color: 'orange',
-                       strokeDashArray: linestyle,
-                       changeable: false,
-                       tags: 'stack'},
-                      js9win);
-
-      nstackhulls += 1;
-    }
-  }
-
-  // Ensure that the store is updated
-  if (hulls.length > 0) {
-    regionstore[stack] = hulls;
-  } else {
-    delete regionstore[stack];
-  }
-
-  /*
-   * Add master hull last (so it appears on top).
-   * Trying to add the right level of edit-ability to the polygon.
-   *
-   * Note that points can be moved and deleted even with these options
-   * set.
-   */
-
-  if (typeof regions.master !== "undefined") {
-
-    add_hull_to_js9(regions.master,
-                    {movable: false,
-                     rotatable: false,
-                     resizable: false,  // do we want this true?
-                     tags: 'master'},
-                    js9win);
-
-    regionstore.master = [regions.master];
-  } else {
-    delete regionstore.master;
-  }
-
-  const out = {nhulls: nstackhulls};
-  if (typeof(regions.center) !== "undefined") {
-    out.center = regions.center;
-  }
-  return out;
-}
-
-// Add the number of stacks to the JS9 window.
-function updateJS9StackCounter(winid, n) {
-  document.getElementById(winid + 'stackid')
-    .innerHTML += "<span style='float: right;'>Stack hulls: " +
-                  n.toString() + "</span>";
-}
-
-/*
- * HTML code for the JS9 display.
- *
- * Note that the event listeners are added in the
- * setupJS9 callback.
- */
-function js9_display_html(stack, stacknum, id) {
-  let html = "<div class='stackid' id='" + id + "stackid'>" +
-    "<span style='float: left;'>Stack: " + stacknum + ": " +
-    stack + "</span>" +
-    "</div>" +
-    "<div class='useropts'>";
-
-  let name = id + "sigma";
-  html += "<div class='blur'><span>Blur</span>";
-  const sigmas = [0, 1, 2, 3, 4];
-  for (let i = 0; i < sigmas.length; i++) {
-    /* need to have label after the input for the CSS */
-    const sigma = sigmas[i].toString();
-    var l = id + 'sigma' + sigma;
-    html += "<input class='sigma' name='" + name + "' type='radio' ";
-    html += "id='" + l + "' value='" + sigma + "'"
-    if (i === 0) { html += " checked"; }
-    html += ">";
-    html += "<label for='" + l + "'>" + sigma + "</label>";
-  }
-  html += "</div>";
-
-  html += "<div class='reload'>";
-  html += "<button id='" + id;
-  html += "ReloadRegions'>Reload Regions</button>";
-  html += "</div>";
-
-  const all_bins = [1, 2, 4, 8, 16, 32, 64, 128];
-  let def_binsize, def_start;
-  if (stack.startsWith('hrc')) {
-    def_binsize = 64;
-    def_start = 1;
-  } else {
-    def_binsize = 8;
-    def_start = 0;
-  }
-  const def_bins = all_bins.slice(def_start, def_start + 7);
-
-  name = id + "binsize";
-  html += "<div class='rebin'><span>Bin</span>";
-  for (let i = 0; i < def_bins.length; i++) {
-    const binsize = def_bins[i].toString();
-    const l = id + 'binsize' + binsize;
-    html += "<input class='binsize' name='" + name + "' type='radio' ";
-    html += "id='" + l + "' value='" + binsize + "'";
-    if (def_bins[i] === def_binsize) {
-      html += " checked";
-    }
-
-    html += ">";
-    html += "<label for='" + l + "'>" + binsize + "</label>";
-  }
-  html += "</div>";
-
-  html += "<div class='zoom'>Zoom: ";
-  html += "<button class='zoomin'>In</button>";
-  html += "<button class='zoomout'>Out</button>";
-  html += "</div>";
-
-  html += "<div class='showable'>Toggle: ";
-  html += "<button id='" + id + "ShowPanner'>Panner</button>";
-  html += "</div>";
-
-  html += "</div>";
-
-  html += "<div class='JS9Menubar' id='" + id + "Menubar'></div>";
-  html += "<div class='JS9' id='" + id + "'></div>'";
-  html += "<div class='JS9Colorbar' id='" + id + "'></div>'";
-
-  return html;
-}
-
-
-// "unique" id for new JS9 windows
-//
-//
-var idctr = 1;
-function js9_id(stack) {
-  // return stack;
-
-  var retval = idctr.toString();
-  idctr += 1;
-  return "js9win" + retval;
-}
-
-// Applies an energy filter for ACIS data to try and match the hull(s).
-//
-function showInJS9(stackval) {
-  if (stackval.trim() === '') { return; }
-
-  const toks = stackval.split(',');
-  if (toks.length != 2) {
-    alert("Internal error: stackval=[" + stackval + "]");
-    return;
-  }
-
-  const stack = toks[0];
-  const stacknum = toks[1];
-
-  const winid = js9_id(stack);
-  const opts = {onload: finalizeJS9Display('"""
-
-    out += ensemble + "', " + str(masterid) + ", stack, winid)}"
-    out += """
-  if (stack.startsWith('acis')) {
-    opts.bin = 8;
-    opts.xdim = 8192;
-    opts.ydim = 8192;
-    // does this actually do anything?
-    opts.filter = enbands[stack];
-  } else {
-    opts.bin = 64;
-    opts.xdim = 16384;
-    opts.ydim = 16384;
-  }
-  opts.id = winid;
-  return JS9.LoadWindow('/evt3/' + stack, opts, 'light',
-                        js9_display_html(stack, stacknum, opts.id));
-}
-
-/*** callback code for handling region changes ***/
-
-/*
- * Let's see how well it works with the onchange handler.
- * If not, could we chain on the mouseup handler?
- */
-
-// The code adds tags for master and stack which could be used
-// to distinguish regions, although stack polygons should not
-// be changeable.
-//
-// What about regions that the user has added directly?
-//
-function handleRegionChange(img, action) {
-  console.log(">> mode=" + action.mode + " tags=" + action.tags);
-
-  // For now, we only care about master tags;
-  // this may need to be tweaked if we use the tag name as an id
-  //
-  if (action.tags[0] !== "master") { return; }
-
-  if (action.mode === "update") {
-    broadcastMasterUpdate(img, action);
-  } else if (action.mode === "remove") {
-    broadcastMasterDelete(img, action);
-  }
-}
-
-// Tell the other windows about the new polygon.
-//
-function broadcastMasterUpdate(img, action) {
-
-  // This is the window that the user has changed, so we don't want
-  // to change this window.
-  const js9win = img.display.id;
-  const baseWin = {display: js9win};
-
-  // Convert the polygon into a convex hull (if necessary).
-  //
-  let chull_sky = window.convexHull(action.pts);
-  let chull_eqpos = [];
-  for (let sky of chull_sky) {
-    chull_eqpos.push(JS9.PixToWCS(sky.x, sky.y, baseWin));
-  }
-
-  // Now that the convex-hull version appears in a different layer,
-  // the name can match the master name.
-  //
-  // const convexName = 'convex';
-  const convexName = 'master';
-
-  const convexOpts = {color: 'cyan',
-                      strokeDashArray: [5, 3],
-                      changeable: false,
-                      evented: false,
-                      tags: convexName};
-
-  // Since using LightWindows, can look for div.dhtmlwindow
-  // containers, and the knowledge that the id for this is
-  // 'd' + id-of-js9-div
-  //
-  // Although this doesn't work as soon as the user creates a panner
-  // or other related window. These extra divs appear to have
-  // ids like js9win2_JS9Panner_lightDiv
-  // as opposed to djs9win2, which we want. So for now just
-  // reject anything with an underscore.
-  //
-  // The convex hull is
-  //   a) drawn in all windows, including the one being edited
-  //   b) drawn first, so that it hopefully appears below the
-  //      master hull, so that the master hull can still be
-  //      selected/edited.
-  //
-
-  const divs = document.getElementsByClassName('dhtmlwindow');
-  for (let div of divs) {
-    if (div.id.includes('_')) {
-      continue;
-    }
-    const owin = div.id.substring(1);
-
-    const imname = {display: owin};
-    let hdl = JS9.GetImage(imname);
-
-    // stop propogating the onchange signal
-    hdl.params.xeqonchange = !hdl.params.xeqonchange;
-
-    // Do we have a convex hull already?
-    // let rs = JS9.GetRegions(convexName, imname);
-    let rs = JS9.GetShapes(convexLayer, convexName, imname);
-    if (rs.length === 0) {
-      var ras = [];
-      var decs = [];
-      for (let wcs of chull_eqpos) {
-        ras.push(wcs.ra);
-        decs.push(wcs.dec);
-      }
-      add_hull_to_js9({ra: ras, dec: decs}, convexOpts,
-                      imname, convexLayer);
-    } else {
-      const hullpts = [];
-      for (let wcs of chull_eqpos) {
-        hullpts.push(JS9.WCSToPix(wcs.ra, wcs.dec, imname));
-      }
-
-      // JS9.ChangeRegions(convexName, {pts: hullpts}, imname);
-      JS9.ChangeShapes(convexLayer, convexName, {pts: hullpts},
-                       imname);
-    }
-
-    // Only adjust the master polygon if this is not the
-    // window the user is changing.
-    if (owin !== js9win) {
-
-      // Need to convert to image coordinates
-      const pts = [];
-      for (let wcs of action.wcspts) {
-        pts.push(JS9.WCSToPix(wcs.ra, wcs.dec, imname));
-      }
-
-      // JS9.ChangeRegions('master', {pts: pts}, imname);
-      JS9.ChangeShapes(masterLayer, 'master', {pts: pts}, imname);
-    }
-
-    hdl.params.xeqonchange = !hdl.params.xeqonchange;
-
-    // Ensure the regions layer is where the user action happens
-    JS9.ActiveShapeLayer(masterLayer, imname);
-  }
-
-}
-
-// TODO: this copies from broadcastMasterUpdate, so need
-//       to refactor
-//
-// Deletes the master shape from both the region and
-// convex layers. It does not delete the original version.
-//
-function broadcastMasterDelete(img, action) {
-
-  const js9win = img.display.id;
-
-  // Since using LightWindows, can look for div.dhtmlwindow
-  // containers, and the knowledge that the id for this is
-  // 'd' + id-of-js9-div
-  //
-  // Although this doesn't work as soon as the user creates a panner
-  // or other related window. These extra divs appear to have
-  // ids like js9win2_JS9Panner_lightDiv
-  // as ooposed to djs9win2, which we want. So for now just
-  // reject anything with an underscore.
-  //
-  const divs = document.getElementsByClassName('dhtmlwindow');
-  for (let div of divs) {
-    if (div.id.includes('_')) {
-      continue;
-    }
-    const owin = div.id.substring(1);
-    if (owin === js9win) {
-      continue;
-    }
-
-    const imname = {display: owin};
-    let hdl = JS9.GetImage(imname);
-
-    // stop propogating the onchange signal
-    hdl.params.xeqonchange = !hdl.params.xeqonchange;
-
-    // JS9.RemoveRegions('master', imname);
-    for (let layer of [convexLayer, masterLayer]) {
-      JS9.RemoveShapes(layer, 'master', imname);
-    }
-
-    hdl.params.xeqonchange = !hdl.params.xeqonchange;
-  }
-
-  // Delete the convex-hull version in the original window.
-  JS9.RemoveShapes(convexLayer, 'master', {display: js9win});
-
-}
-
-if (JS9.Regions.opts.onchange !== null) {
-  alert("Overwriting onchange handler!");
-}
-
-JS9.Regions.opts.onchange = handleRegionChange;
-
-/* play with websamp */
-
-var sampConnection;
-
-// UGLY
-var sampBaseUrl = window.location.href.toString()
-                     .replace(new RegExp("/[^/]*/[^/]*/[^/]*$"), "");
-
-function showInSAMP(stack) {
-  if (stack.trim() === '') { return; }
-  const url = sampBaseUrl + "/evt3/" + stack;
-  console.log("*** SAMP : " + url);
-
-  sampConnection.runWithConnection((connection) => {
-    var msg = new samp.Message("image.load.fits",
-                               {"url": url, "name": stack});
-    connection.notifyAll([msg]);
-  });
-}
-
-function sampIsAvailable(flag) {
-  document.getElementById("sampcontrols").hidden = !flag;
-}
-
-function finalize() {
-  if (typeof sampConnection !== "undefined") {
-    sampConnection.unregister();
-    sampConnection = undefined;
-  }
-}
-
-function initialize() {
-
-  /*** For the moment comment out the samp code, as the
-       continual checking is making some unrelated
-       tasks hard to debug/work on.
-  if (typeof sampConnection === "undefined") {
-    sampConnection = new samp.Connector("CHS Sender");
-    sampConnection.onHubAvailability(sampIsAvailable, 2000);
-  }
-  ***/
-  sampIsAvailable(false);
-
-
-  document.getElementById('imgscale').
-    addEventListener("change", (e) => { setScaling(e.target.value); });
-
-  document.getElementById('showinsamp').
-    addEventListener("change", (e) => { showInSAMP(e.target.value); });
-
-  document.getElementById('showinjs9').
-    addEventListener("change", (e) => { showInJS9(e.target.value); });
-
-  // Set up the button handlers, if we have any
-  //
-  if (npages > 1) {
-    for (let i = 1; i <= npages; i++) {
-      document.getElementById("page" + i.toString())
-        .addEventListener("change", (e) => { setPage(e.target.value); });
-    }
-  }
-
-  setPage(1);
-}
-</script></head>"""
-
-    # out += "<body onload='initialize();' onunload='finalize();'>"
-    out += "<body onload='initialize();'>"
-
-    out += "<div id='infobar'>"
-
-    out += "<div id='home'>"
-    out += "<a href='/'>Ensemble list</a>"
-    out += "<br>"
-    out += "<a href='/{0}'>{0}</a>".format(ensemble)
-    out += "<br>"
-
-    # button list to get to the other master hulls
-    for h in info['masters']:
-        mval = int(h['masterid'])
-        if h['masterid'] == mid:
-            out += "<span class='hulllink'>{}</span>".format(mval)
-            continue
-
-        out += "<a class='hulllink' href='/{}/{}/{}'>{}</a>".format(ensemble,
-                                                                    revstr,
-                                                                    h['masterid'],
-                                                                    mval)
-
-    out += "</div>"
-
-    out += "<div class='info'>"
-    out += "<span class='label'>{}</span>".format(ensemble)
-
-    out += "<span>Hull:</span>"
-    out += "<span id='hullid'>{}</span>".format(mid)
-
-    out += "<span>Number components:</span>"
-    out += "<span id='ncomponents'>{}</span>".format(hull['ncpts'])
-
-    out += "<span>Version:</span>"
-    out += "<span>{}</span>".format(revstr)
-    out += "</div>"
-
-    # TODO: is select the best UI option for the 'select a stack to
-    #       display' option?
-
-    # Try WebSamp
-    #
-    out += "<div id='sampcontrols'>SAMP: "
-    out += "<select id='showinsamp'>"
-    out += "<option value='' selected></option>"
-    for stk in ordered_stks:
-        out += "<option value='{0}'>{1:03d}: {0}</option>".format(stk,
-                                                                  info['stackmap'][stk])
-    out += "</select>"
-    out += "</div>"
-
-    # Add in a JS9 link to select the given stack.
-    #
-    out += "<div id='js9controls'>"
-    out += "JS9: <select id='showinjs9'>"
-    out += "<option value='' selected></option>"
-    for stk in ordered_stks:
-        out += "<option "
-        out += "value='{0},{1:03d}'>{1:03d}: {0}".format(stk,
-                                                         info['stackmap'][stk])
-        out += "</option>"
-
-    out += "</select>"
-    out += "</div>"
-
-    out += "<div id='summary'><select id='imgscale' class='button'>"
-    out += "<option value='log10' selected>log 10</option>"
-    out += "<option value='sqrt'>square root</option>"
-    out += "<option value='none'>linear</option>"
-    out += "</select>"
-
-    # list the pages, if there's more than one.
-    #
-    # the pages could just be a list of buttons, in a grid, which
-    # change to indicate the selected one, but that's more work.
-    #
-    if hull['npages'] > 1:
-        out += "<table><thead><tr><th>Page</th><th>Select</th>"
-        out += "</tr></thead><tbody>"
-
-        for p in range(1, hull['npages'] + 1):
-            pageid = 'page{}'.format(p)
-            out += "<tr><td><label for='{}'>{}<label></td>".format(pageid, p)
-            out += "<td><input name='pagechoice' type='radio' id='{}' ".format(pageid)
-            out += "value='{}'".format(p)
-            if p == 1:
-                out += "checked"
-            out += "></td></tr>"
-
-        out += "</tbody></table>"
-
-    out += "</div>"
-
-    # notes
-    out += "<div id='notes'><p class='label'>Notes</p>"
-    out += "<textarea cols=32 rows=10 id='usercontent'></textarea>"
-    out += "<br><button id='saveusercontent' class='button'>"
-    out += "Save notes</button></div>"
-
-    # user action
-    #
-    # assumes the useraction field matches these options.
-    #
-    out += "<div id='action'><p>User action:</p>"
-    if is_latest:
-        out += "<select required='true' id='choice' class='button'>"
-        for n, v in [("", ""), ("Accept", "accept"),
-                     ("Delete Master", "delete"),
-                     ("Manual", "manual")]:
-            out += "<option value='{}'"
-            if v == hull['useraction']:
-                out += " selected"
-
-            out += ">{}</option>".format(v, n)
-
-        out += "</select>"
-    else:
-        try:
-            action = {'': 'ERROR: no action recorded',
-                      'accept': 'Accept',
-                      'delete': 'Delete Master',
-                      'manual': 'Manual'}[hull['useraction']]
-        except KeyError:
-            print("LOG: useraction unknown: {}".format(hull['useraction']))
-            action = 'ERROR: unrecognized action ' + \
-                '<{}>'.format(hull['useraction'])
-
-        out += "<p>{}</p>".format(action)
-    out += "</div>"
-
-    # overview image
-    out += "</div><div id='overviewbar'>"
-    out += "<div id='username'>{}</div>".format(os.getlogin())
-
-    out += "<img id='pageview'>"
-    out += "</div>"
-
-    out += "</body></html>"
-    return 200, out
+                           'ncpts': hull['ncpts'],
+                           'info': info,
+                           'hull': hull,
+                           'is_latest': is_latest,
+                           'ordered_stacks': ordered_stks,
+                           # 'stack_band': json.dumps(stack_band),
+                           # 'hull_store': json.dumps(hull_store),
+                           # 'stack_polys': json.dumps(stack_polys),
+                           'stack_band': stack_band,
+                           'hull_store': hull_store,
+                           'stack_polys': stack_polys,
+                           'username': os.getlogin()})
 
 
 # Not sure what JS9 uses so cover some common types
@@ -2291,7 +1344,7 @@ def send_file(obj, infile, mimetype, headers=None):
     try:
         cts = open(infile, 'r').read()
     except IOError as exc:
-        print("LOG: error reading [{}]: {}".format(infile, exc))
+        log("error reading [{}]: {}".format(infile, exc))
         # could send something more useful
         obj.send_error(404)
         return
@@ -2319,8 +1372,6 @@ class CHSHandler(BaseHTTPRequestHandler):
         self.wfile.write(contents)
 
     def do_GET(self):
-
-        print("DBG")
 
         # This is going to be ugly routing code. Handle all
         # the special cases before dropping down to the
@@ -2502,7 +1553,7 @@ class CHSHandler(BaseHTTPRequestHandler):
         try:
             masterid = int(toks[2])
         except ValueError:
-            print("LOG: invalid master id: [{}]".format(toks[2]))
+            log("invalid master id: [{}]".format(toks[2]))
             self.send_error(404)
 
         datadir = self.server.context['datadir']
@@ -2566,7 +1617,7 @@ class CHSHandler(BaseHTTPRequestHandler):
 
         mimetype = get_mimetype(infile)
         if mimetype is None:
-            print("LOG: unknown JS9 suffix [{}]".format(infile))
+            errlog("unknown JS9 suffix [{}]".format(infile))
             self.send_error(404)
             return
 
@@ -2584,7 +1635,7 @@ class CHSHandler(BaseHTTPRequestHandler):
                            "{}*fits*".format(stack))
         matches = glob.glob(pat)
         if len(matches) == 0:
-            print("LOG: failed glob={}".format(pat))
+            errlog("failed glob={}".format(pat))
             self.send_error(404)
             return
 
@@ -2596,8 +1647,8 @@ class CHSHandler(BaseHTTPRequestHandler):
             try:
                 cts = open(infile, 'r').read()
             except IOError as exc:
-                print("LOG: error reading [{}]: ".format(infile) +
-                      "{}".format(exc))
+                errlog("error reading [{}]: ".format(infile) +
+                       "{}".format(exc))
 
                 # could send something more useful as a response?
                 self.send_error(404)
