@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset='UTF-8'>
+    <title>{{ ensemble }}</title>
+    <link rel='stylesheet' type='text/css' href='/css/ensemble.css'>
+    <script src='/js/js9/js/spin.js'></script>
+    <script type='text/javascript'>
+var state;
+
+function removeChildren(parent) {
+  while (parent.firstChild) {
+    parent.removeChild(parent.firstChild);
+  }
+}
+
+function updatePage(json) {
+  state = json;
+
+  // Set the version options for the user to select.
+  //
+  var versions = [];
+  for (let revision in state.versions) {
+    versions.push(revision);
+  }
+
+  // wasteful comparison search but should not be an issue here
+  versions.sort((a, b) => {
+    const aa = Math.floor(a);
+    const bb = Math.floor(b);
+    if (aa < bb) { return -1; }
+    if (aa > bb) { return 1; }
+    return 0;
+    }).reverse();
+
+  var parent = document.getElementById('version');
+  removeChildren(parent);
+  for (let i = 0; i < versions.length; i++) {
+    const el = document.createElement('option');
+    el.value = versions[i];
+    if (i === 0) { el.selected = true; }
+    el.innerHTML = versions[i];
+
+    parent.appendChild(el);
+  }
+
+  if (versions.length === 1) {
+    parent.disabled = true;
+  } else {
+    parent.addEventListener("change", (e) => { setVersion(e.target.value); });
+  }
+
+  // default to the latest version
+  setVersion(state.latest_version);
+}
+
+// Switch the display to the given version; minimal error checking
+//
+// If not the latest then page is "read-only".
+//
+function setVersion(revision) {
+
+  const isLatest = state.latest_version === revision;
+
+  let info = state.versions[revision];
+  if (typeof info === 'undefined') {
+    alert("Internal error: unknown revision: [" + revision + "]");
+    return;
+  }
+
+  document.getElementById("nstacks").innerHTML = info.nstacks.toString();
+  document.getElementById("nmasters").innerHTML = info.nmasters.toString();
+
+  /* handle the master list */
+  let parent = document.getElementById('summarydata');
+  let all_hulls_have_useraction = true;
+  removeChildren(parent);
+  for (let i = 0; i < info.nmasters; i++) {
+    let m = info.masters[i];
+    let el = document.createElement("tr");
+
+    var td;
+    td = document.createElement("td");
+    td.innerHTML = m.masterid;
+    el.appendChild(td);
+
+    td = document.createElement("td");
+    td.innerHTML = m.ncpts.toString();
+    el.appendChild(td);
+
+    td = document.createElement("td");
+    var a = document.createElement("a");
+    a.className = 'hullreview';
+    a.href = "/" + info.name + "/" + revision + "/" + m.masterid;
+    if (isLatest) { a.innerHTML = "Review"; } else { a.innerHTML = "View"; }
+    td.appendChild(a);
+    el.appendChild(td);
+
+    td = document.createElement("td");
+    if (m.useraction === '') {
+      td.className = "undecided";
+      td.innerHTML = "NO DECISION";
+      all_hulls_have_user_action = false;
+    } else {
+      td.innerHTML = m.useraction;
+    }
+    el.appendChild(td);
+
+    parent.appendChild(el);
+  }
+
+  // Update the image
+  parent = document.getElementById('overviewimage');
+  parent.src = "/img/" + info.name + "/field." + info.name +
+               ".v" + revision + ".png";
+
+  // Is this an actionable page or not?
+  // a) are we the latest version
+  // b) do all the hulls have a user action?
+  //
+  const finish = document.getElementById('final');
+  if (isLatest) {
+    finish.style.display = 'block';
+    document.getElementById('finish')
+            .disabled = !all_hulls_have_user_action;;
+  } else {
+    finish.style.disply = 'none';
+  }
+}
+
+const spinopts = {
+    color: "#FF0000", opacity: 0.4,
+    radius: 20, length: 20, width: 7
+};
+
+function initialize() {
+  let httpRequest = new XMLHttpRequest();
+  if (!httpRequest) {
+      alert("Unable to create a XMLHttpRequest!");
+      return;
+  }
+
+  // Add the spinner to the whole page
+  //
+  let body = document.getElementsByTagName("body")[0];
+  let spinner = new Spinner(spinopts);
+  spinner.spin(body);
+
+  httpRequest.addEventListener("load", function() {
+    updatePage(httpRequest.response);
+  });
+  httpRequest.addEventListener("error", function() {
+      alert("Unable to load data!");
+  });
+  httpRequest.addEventListener("abort", function() {
+      alert("Unable to load data!");
+  });
+  httpRequest.addEventListener("loadend", function() {
+      spinner.stop();
+  });
+
+  // Do I need to add a cache-busting identifier?
+  httpRequest.open('GET', '/api/{{ ensemble }}?' +
+                   (new Date()).getTime());
+  httpRequest.responseType = 'json';
+  httpRequest.send();
+}
+</script>
+  </head>
+  <body onload='initialize();'>
+
+    <div id='infobar'>
+
+      <div id='home'><a href='/'>Ensemble list</a></div>
+
+      <div class='info'>
+	<span class='label'>{{ ensemble }}</span>
+	<span>Version:</span>
+
+	<select id='version' class='button'>
+	</select>
+
+	<span>Stacks:</span>
+	<span id='nstacks'></span>
+
+	<span>Master Hulls:</span>
+	<span id='nmasters'></span>
+
+      </div>
+
+      <div id='summary'>
+	<table>
+	  <thead>
+	    <tr>
+	      <th>Master</th>
+	      <th>Ncpt</th>
+	      <th>Action</th>
+	      <th>Decision</th>
+	    </tr>
+	  </thead>
+	  <tbody id='summarydata'>
+	  </tbody>
+	</table>
+      </div>
+
+      <div id='notes'><p class='label'>Notes</p>
+	<textarea cols=32 rows=10 id='usercontent'></textarea>
+	<br><button id='saveusercontent' class='button'>
+	  Save notes</button></div>
+
+      <div id='final'><button id='finish' class='button' 
+			      type='button'>Finish review</button></div>
+
+    </div>
+
+    <div id='overviewbar'>
+      <div id='username'>{{ username }}</div>
+      <img id='overviewimage'>
+    </div>
+
+  </body>
+</html>

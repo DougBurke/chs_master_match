@@ -1,0 +1,40 @@
+<DOCTYPE html>
+<html>
+  <head>
+    <meta charset='UTF-8'>
+    <title>CHS review</title>
+    <link rel='stylesheet' type='text/css' href='/css/index.css'>
+    <script src='/js/js9/js/spin.js'></script>
+    <script src='/js/index.js'></script>
+  </head>
+  <body onload='initialize();'>
+
+    <h1>Ensemble selection page</h1>
+    <div id='summary'>
+
+      <span>Last save:</span><span>never</span>
+      <span>To do:</span>
+      <span id='ntodos'></span>
+      <span>To review:</span>
+      <span id='nreviews'></span>
+      <span>Completed:</span>
+      <span id='ncompleted'></span>
+      <span>Directory:</span><span>{{ datadir }}</span>
+    </div>
+
+    <p class='label'>Notes</p>
+    <textarea cols=80 rows=10 id='usercontent'></textarea>
+    <br>
+    <button id='saveusercontent' class='button'>Save notes</button>
+
+    <p class='label'>To do</p>
+    <div id='todo' class='selection'></div>
+
+    <p class='label'>Review</p>
+    <div id='review' class='selection'></div>
+
+    <p class='label'>Completed</p>
+    <div id='completed' class='selection'></div>
+
+  </body>
+</html>

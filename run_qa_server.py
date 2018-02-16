@@ -78,6 +78,9 @@ import urlparse
 
 import numpy as np
 
+from jinja2 import Environment, FileSystemLoader, select_autoescape, \
+    TemplateNotFound
+
 try:
     import pycrates
 except ImportError:
@@ -120,6 +123,7 @@ class CHSServer(HTTPServer):
        evt3dir  - the location of the stack event files
        userdir  - the location for storing user information
        webdir   - the location of the web assets
+       environment - the Jinja2 environment
 
     These must all be existing directories.
     """
@@ -136,6 +140,8 @@ class CHSServer(HTTPServer):
                 raise ValueError("Not a directory: {}".format(d))
 
             context[k] = d
+
+        context['environment'] = store['environment']
 
         HTTPServer.__init__(self, *args, **kwargs)
         self.context = context
@@ -789,11 +795,30 @@ def get_master_hull_regions(ensemble, masterid, datadir, rawdir):
     return get_data_master(datadir, rawdir, ensemble, masterid)
 
 
-def create_index_page(datadir):
+def apply_template(env, tmplname, args):
+
+    try:
+        tmpl = env.get_template(tmplname)
+    except TemplateNotFound as exc:
+        errlog("No template for " + tmplname)
+        out = "<!DOCTYPE html><html><head><title>ERROR</title>"
+        out += "</head><body><p>Unable to find template:"
+        out += "<strong>{}</strong>\n".format(tmplname)
+        out += "Error: {}".format(exc)
+        out += "</body></html>"
+        return 404, out
+
+    out = tmpl.render(**args)
+    return 200, out
+
+
+def create_index_page(env, datadir):
     """Create the top-level page: ensemble status.
 
     Parameters
     ----------
+    env
+        Jinja2 environment
     datadir : str
         The path to the directory containing the ensemble-level
         products.
@@ -804,53 +829,10 @@ def create_index_page(datadir):
         The response status and HTML contents
     """
 
-    out = "<DOCTYPE html><html><head><meta charset='UTF-8'>"
-    out += "<title>CHS review</title>"
-    out += "<link rel='stylesheet' type='text/css' "
-    out += "href='/css/index.css'>"
-    out += "<script src='/js/js9/js/spin.js'></script>"
-    out += "<script src='/js/index.js'></script>"
-    out += "</head><body onload='initialize();'>"
-
-    out += "<h1>Ensemble selection page</h1>"
-    out += "<div id='summary'>"
-    # TODO: update this value
-    out += "<span>Last save:</span><span>never</span>"
-    out += "<span>To do:</span>"
-    out += "<span id='ntodos'></span>"
-    out += "<span>To review:</span>"
-    out += "<span id='nreviews'></span>"
-    out += "<span>Completed:</span>"
-    out += "<span id='ncompleted'></span>"
-    out += "<span>Directory:</span><span>{}</span>".format(datadir)
-    out += "</div>"
-
-    # notes
-    out += "<p class='label'>Notes</p><textarea cols=80 rows=10 "
-    out += "id='usercontent'></textarea><br><button "
-    out += "id='saveusercontent' class='button'>Save notes</button>"
-
-    # To do
-    #
-    # Could allow sorting by several different metrics; use
-    # data elements to encode the values for the sort?
-    #
-    out += "<p class='label'>To do</p><div id='todo' class='selection'>"
-    out += "</div>"
-
-    # Review
-    out += "<p class='label'>Review</p><div id='review' class='selection'>"
-    out += "</div>"
-
-    # Completed
-    out += "<p class='label'>Completed</p><div id='completed' class='selection'>"
-    out += "</div>"
-
-    out += "</body></html>"
-    return 200, out
+    return apply_template(env, 'index.html', {'datadir': datadir})
 
 
-def create_ensemble_index_page(datadir, ensemble):
+def create_ensemble_index_page(env, datadir, ensemble):
     """Create the top-level ensemble page.
 
     Parameters
@@ -869,228 +851,17 @@ def create_ensemble_index_page(datadir, ensemble):
 
     state = parse_ensembledir(datadir, ensemble)
     if state is None:
-        out = "<DOCTYPE html><html><head><title>ERROR</title>"
+        out = "<!DOCTYPE html><html><head><title>ERROR</title>"
         out += "</head><body><p>There was an error when processing "
         out += "the directory {} for ".format(datadir)
         out += "ensemble {}".format(ensemble)
         out += "</body></html>"
         return 404, out
 
-    out = "<DOCTYPE html><html><head><meta charset='UTF-8'>"
-    out += "<title>{}</title>".format(ensemble)
-    out += "<link rel='stylesheet' type='text/css' "
-    out += "href='/css/ensemble.css'>"
-    out += "<script src='/js/js9/js/spin.js'></script>"
-    out += """<script type='text/javascript'>
-var state;
-
-function removeChildren(parent) {
-  while (parent.firstChild) {
-    parent.removeChild(parent.firstChild);
-  }
-}
-
-function updatePage(json) {
-  state = json;
-
-  // Set the version options for the user to select.
-  //
-  var versions = [];
-  for (let revision in state.versions) {
-    versions.push(revision);
-  }
-
-  // wasteful comparison search but should not be an issue here
-  versions.sort((a, b) => {
-    const aa = Math.floor(a);
-    const bb = Math.floor(b);
-    if (aa < bb) { return -1; }
-    if (aa > bb) { return 1; }
-    return 0;
-    }).reverse();
-
-  var parent = document.getElementById('version');
-  removeChildren(parent);
-  for (let i = 0; i < versions.length; i++) {
-    const el = document.createElement('option');
-    el.value = versions[i];
-    if (i === 0) { el.selected = true; }
-    el.innerHTML = versions[i];
-
-    parent.appendChild(el);
-  }
-
-  if (versions.length === 1) {
-    parent.disabled = true;
-  } else {
-    parent.addEventListener("change", (e) => { setVersion(e.target.value); });
-  }
-
-  // default to the latest version
-  setVersion(state.latest_version);
-}
-
-// Switch the display to the given version; minimal error checking
-//
-// If not the latest then page is "read-only".
-//
-function setVersion(revision) {
-
-  const isLatest = state.latest_version === revision;
-
-  let info = state.versions[revision];
-  if (typeof info === 'undefined') {
-    alert("Internal error: unknown revision: [" + revision + "]");
-    return;
-  }
-
-  document.getElementById("nstacks").innerHTML = info.nstacks.toString();
-  document.getElementById("nmasters").innerHTML = info.nmasters.toString();
-
-  /* handle the master list */
-  let parent = document.getElementById('summarydata');
-  let all_hulls_have_useraction = true;
-  removeChildren(parent);
-  for (let i = 0; i < info.nmasters; i++) {
-    let m = info.masters[i];
-    let el = document.createElement("tr");
-
-    var td;
-    td = document.createElement("td");
-    td.innerHTML = m.masterid;
-    el.appendChild(td);
-
-    td = document.createElement("td");
-    td.innerHTML = m.ncpts.toString();
-    el.appendChild(td);
-
-    td = document.createElement("td");
-    var a = document.createElement("a");
-    a.className = 'hullreview';
-    a.href = "/" + info.name + "/" + revision + "/" + m.masterid;
-    if (isLatest) { a.innerHTML = "Review"; } else { a.innerHTML = "View"; }
-    td.appendChild(a);
-    el.appendChild(td);
-
-    td = document.createElement("td");
-    if (m.useraction === '') {
-      td.className = "undecided";
-      td.innerHTML = "NO DECISION";
-      all_hulls_have_user_action = false;
-    } else {
-      td.innerHTML = m.useraction;
-    }
-    el.appendChild(td);
-
-    parent.appendChild(el);
-  }
-
-  // Update the image
-  parent = document.getElementById('overviewimage');
-  parent.src = "/img/" + info.name + "/field." + info.name +
-               ".v" + revision + ".png";
-
-  // Is this an actionable page or not?
-  // a) are we the latest version
-  // b) do all the hulls have a user action?
-  //
-  const finish = document.getElementById('final');
-  if (isLatest) {
-    finish.style.display = 'block';
-    document.getElementById('finish')
-            .disabled = !all_hulls_have_user_action;;
-  } else {
-    finish.style.disply = 'none';
-  }
-}
-
-const spinopts = {
-    color: "#FF0000", opacity: 0.4,
-    radius: 20, length: 20, width: 7
-};
-
-function initialize() {
-  let httpRequest = new XMLHttpRequest();
-  if (!httpRequest) {
-      alert("Unable to create a XMLHttpRequest!");
-      return;
-  }
-
-  // Add the spinner to the whole page
-  //
-  let body = document.getElementsByTagName("body")[0];
-  let spinner = new Spinner(spinopts);
-  spinner.spin(body);
-
-  httpRequest.addEventListener("load", function() {
-    updatePage(httpRequest.response);
-  });
-  httpRequest.addEventListener("error", function() {
-      alert("Unable to load data!");
-  });
-  httpRequest.addEventListener("abort", function() {
-      alert("Unable to load data!");
-  });
-  httpRequest.addEventListener("loadend", function() {
-      spinner.stop();
-  });
-
-  // Do I need to add a cache-busting identifier?
-  httpRequest.open('GET', '/api/""" + ensemble + """?' +
-                   (new Date()).getTime());
-  httpRequest.responseType = 'json';
-  httpRequest.send();
-}
-</script></head><body onload='initialize();'>"""
-
-    out += "<div id='infobar'>"
-
-    out += "<div id='home'><a href='/'>Ensemble list</a></div>"
-
-    out += "<div class='info'>"
-    out += "<span class='label'>{}</span>".format(ensemble)
-    out += "<span>Version:</span>"
-
-    # If only one version then could not display a menu, but
-    # that complicates the code a bit so leave for now
-    # (may need to change given user feedback)
-    #
-    out += "<select id='version' class='button'>"
-    out += "</select>"
-
-    out += "<span>Stacks:</span>"
-    out += "<span id='nstacks'></span>"
-
-    out += "<span>Master Hulls:</span>"
-    out += "<span id='nmasters'></span>"
-
-    out += "</div>"
-
-    out += "<div id='summary'><table><thead><tr>"
-    for n in ['Master', 'Ncpt', 'Action', 'Decision']:
-        out += "<th>{}</th>".format(n)
-
-    out += "</tr></thead><tbody id='summarydata'>"
-    out += "</tbody></table></div>"
-
-    # notes
-    out += "<div id='notes'><p class='label'>Notes</p>"
-    out += "<textarea cols=32 rows=10 id='usercontent'></textarea>"
-    out += "<br><button id='saveusercontent' class='button'>"
-    out += "Save notes</button></div>"
-
-    # final
-    out += "<div id='final'><button id='finish' class='button' "
-    out += "type='button'>Finish review</button></div>"
-
-    # overview image
-    out += "</div><div id='overviewbar'>"
-    out += "<div id='username'>{}</div>".format(os.getlogin())
-    out += "<img id='overviewimage'>"
-    out += "</div>"
-
-    out += "</body></html>"
-    return 200, out
+    # Could cache the username
+    return apply_template(env, 'ensemble.html',
+                          {'ensemble': ensemble,
+                           'username': os.getlogin()})
 
 
 def eqpos_to_dict(eqpos, nvertex):
@@ -1131,7 +902,8 @@ def eqpos_to_dict(eqpos, nvertex):
             'ra0': ra0, 'dec0': dec0}
 
 
-def create_master_hull_page(datadir, rawdir,
+def create_master_hull_page(env,
+                            datadir, rawdir,
                             ensemble, revision, masterid):
     """Create the review page for a master hull.
 
@@ -1170,7 +942,7 @@ def create_master_hull_page(datadir, rawdir,
 
     state = parse_ensembledir(datadir, ensemble)
     if state is None:
-        out = "<DOCTYPE html><html><head><title>ERROR</title>"
+        out = "<!DOCTYPE html><html><head><title>ERROR</title>"
         out += "</head><body><p>There was an error when processing "
         out += "the directory {} for ".format(datadir)
         out += "ensemble {} hull {}".format(ensemble, masterid)
@@ -1188,13 +960,13 @@ def create_master_hull_page(datadir, rawdir,
              if h['masterid'] == mid]
     if len(hulls) == 0:
         # may need a better message for when switching between versions
-        out = "<DOCTYPE html><html><head><title>ERROR</title>"
+        out = "<!DOCTYPE html><html><head><title>ERROR</title>"
         out += "</head><body><p>Invalid master hull.</p></body></html>"
         return 404, out
 
     elif len(hulls) > 1:
         print("LOG: hulls = {}".format(hulls))
-        out = "<DOCTYPE html><html><head><title>INTERNAL ERROR</title>"
+        out = "<!DOCTYPE html><html><head><title>INTERNAL ERROR</title>"
         out += "</head><body><p>FOUND MULTIPLE COPIES - see Doug!</p></body></html>"
         return 404, out
 
@@ -1209,7 +981,7 @@ def create_master_hull_page(datadir, rawdir,
     dname = os.path.join(rawdir, ensemble)
     if not os.path.isdir(dname):
         print("LOG: ERROR missing rawdir {}".format(dname))
-        out = "<DOCTYPE html><html><head><title>INTERNAL ERROR</title>"
+        out = "<!DOCTYPE html><html><head><title>INTERNAL ERROR</title>"
         out += "</head><body><p>Missing dir={}".format(dname)
         out += + "- see Doug!</p></body></html>"
         return 404, out
@@ -1219,7 +991,7 @@ def create_master_hull_page(datadir, rawdir,
                             '{}.v{}.fits'.format(ensemble, revstr))
     if not os.path.isfile(hullfile):
         print("LOG: ERROR missing hullfile {}".format(hullfile))
-        out = "<DOCTYPE html><html><head><title>INTERNAL ERROR</title>"
+        out = "<!DOCTYPE html><html><head><title>INTERNAL ERROR</title>"
         out += "</head><body><p>Missing hullfile={}".format(hullfile)
         out += + "- see Doug!</p></body></html>"
         return 404, out
@@ -1240,7 +1012,7 @@ def create_master_hull_page(datadir, rawdir,
         ds = pycrates.CrateDataset(hullfile, mode='r')
     except IOError as exc:
         print("LOG: unable to read hullfile {} - {}".format(hullfile, exc))
-        out = "<DOCTYPE html><html><head><title>INTERNAL ERROR</title>"
+        out = "<!DOCTYPE html><html><head><title>INTERNAL ERROR</title>"
         out += "</head><body><p>Error reading "
         out += "hullfile={}\nreason=\n{}".format(hullfile, exc)
         out += + "- see Doug!</p></body></html>"
@@ -1250,7 +1022,7 @@ def create_master_hull_page(datadir, rawdir,
         cr = ds.get_crate('SRCMATCH')
     except IndexError as exc:
         print("LOG: unable to read SRCMATCH from hullfile {} - {}".format(hullfile, exc))
-        out = "<DOCTYPE html><html><head><title>INTERNAL ERROR</title>"
+        out = "<!DOCTYPE html><html><head><title>INTERNAL ERROR</title>"
         out += "</head><body><p>Error reading SRCMATCH block of "
         out += "hullfile={}\nreason=\n{}".format(hullfile, exc)
         out += + "- see Doug!</p></body></html>"
@@ -1261,7 +1033,7 @@ def create_master_hull_page(datadir, rawdir,
     nstks = cr.get_key_value('STKIDNUM')
     if nstks is None:
         print("LOG: missing STKIDNUM keyword in hullfile {} - {}".format(hullfile))
-        out = "<DOCTYPE html><html><head><title>INTERNAL ERROR</title>"
+        out = "<!DOCTYPE html><html><head><title>INTERNAL ERROR</title>"
         out += "</head><body><p>No STKIDNUM keyword in "
         out += "hullfile={}\n".format(hullfile)
         out += + "- see Doug!</p></body></html>"
@@ -1273,7 +1045,7 @@ def create_master_hull_page(datadir, rawdir,
         val = cr.get_key_value(key)
         if val is None:
             print("LOG: missing {} keyword in hullfile {} - {}".format(key, hullfile))
-            out = "<DOCTYPE html><html><head><title>INTERNAL ERROR</title>"
+            out = "<!DOCTYPE html><html><head><title>INTERNAL ERROR</title>"
             out += "</head><body><p>No {} keyword in ".format(key)
             out += "hullfile={}\n".format(hullfile)
             out += + "- see Doug!</p></body></html>"
@@ -1327,7 +1099,7 @@ def create_master_hull_page(datadir, rawdir,
         cr = ds.get_crate('SRCLIST')
     except IndexError as exc:
         print("LOG: unable to read SRCLIST from hullfile {} - {}".format(hullfile, exc))
-        out = "<DOCTYPE html><html><head><title>INTERNAL ERROR</title>"
+        out = "<!DOCTYPE html><html><head><title>INTERNAL ERROR</title>"
         out += "</head><body><p>Error reading SRCLIST block of "
         out += "hullfile={}\nreason=\n{}".format(hullfile, exc)
         out += + "- see Doug!</p></body></html>"
@@ -1355,7 +1127,7 @@ def create_master_hull_page(datadir, rawdir,
                                                           revstr))
             if not os.path.isfile(qafile):
                 print("LOG: ERROR missing qafile {}".format(qafile))
-                out = "<DOCTYPE html><html><head><title>INTERNAL ERROR</title>"
+                out = "<!DOCTYPE html><html><head><title>INTERNAL ERROR</title>"
                 out += "</head><body><p>Missing qafile={}".format(qafile)
                 out += "- see Doug!</p></body></html>"
                 return 404, out
@@ -1364,7 +1136,7 @@ def create_master_hull_page(datadir, rawdir,
                 qcr = pycrates.read_file(qafile + "[cols nvertex, eqpos]")
             except IOError as exc:
                 print("LOG: ERROR unable to read qafile {}".format(qafile))
-                out = "<DOCTYPE html><html><head><title>INTERNAL ERROR</title>"
+                out = "<!DOCTYPE html><html><head><title>INTERNAL ERROR</title>"
                 out += "</head><body><p>Unable to read "
                 out += "qafile={}\nerror=\n{}".format(qafile, exc)
                 out += "- see Doug!</p></body></html>"
@@ -1431,7 +1203,7 @@ def create_master_hull_page(datadir, rawdir,
         regstr = read_ds9_region(regfile)
         if regstr is None:
             print("LOG missing stack region file {}".format(regfile))
-            out = "<DOCTYPE html><html><head><title>INTERNAL ERROR</title>"
+            out = "<!DOCTYPE html><html><head><title>INTERNAL ERROR</title>"
             out += "</head><body><p>Unable to read stack "
             out += "regfile={}".format(regfile)
             out += + "- see Doug!</p></body></html>"
@@ -1467,7 +1239,20 @@ def create_master_hull_page(datadir, rawdir,
 
         store.append(shull)
 
-    out = "<DOCTYPE html><html><head><meta charset='UTF-8'>"
+    """ Not quite ready yet
+    return apply_template(env, 'masterhull.html',
+                          {'ensemble': ensemble,
+                           'revstr': revstr,
+                           'mid': mid,
+                           'masterid': masterid,
+                           'npages': hull['npages'],
+                           'stack_band': json.dumps(stack_band),
+                           'hull_store': json.dumps(hull_store),
+                           'stackhulls': json.dumps(stack_polys),
+                           'username': os.getlogin()});
+    """
+
+    out = "<!DOCTYPE html><html><head><meta charset='UTF-8'>"
     out += "<title>{}: v{} hull {}</title>".format(ensemble,
                                                    revstr,
                                                    mid)
@@ -2535,6 +2320,8 @@ class CHSHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
 
+        print("DBG")
+
         # This is going to be ugly routing code. Handle all
         # the special cases before dropping down to the
         # webassets directory (could special case these
@@ -2545,6 +2332,7 @@ class CHSHandler(BaseHTTPRequestHandler):
         #
         context = self.server.context
         datadir = context['datadir']
+        env = context['environment']
         upath = urlparse.urlparse(self.path)
         path = upath.path
 
@@ -2553,7 +2341,7 @@ class CHSHandler(BaseHTTPRequestHandler):
             path = path[1:]
 
         if path in ["", "index.html"]:
-            status, cts = create_index_page(datadir)
+            status, cts = create_index_page(env, datadir)
             self.write_contents(status, cts)
             return
 
@@ -2581,7 +2369,8 @@ class CHSHandler(BaseHTTPRequestHandler):
             ensemble = toks[0]
 
             if ntoks == 1:
-                status, cts = create_ensemble_index_page(datadir,
+                status, cts = create_ensemble_index_page(env,
+                                                         datadir,
                                                          ensemble)
                 self.write_contents(status, cts)
                 return
@@ -2597,7 +2386,8 @@ class CHSHandler(BaseHTTPRequestHandler):
                     return
 
                 # At the moment use the same data directory
-                status, cts = create_master_hull_page(datadir,
+                status, cts = create_master_hull_page(env,
+                                                      datadir,
                                                       datadir,
                                                       ensemble,
                                                       revision,
@@ -2835,17 +2625,22 @@ class CHSHandler(BaseHTTPRequestHandler):
                       headers=hdrs)
 
 
-def serve(userdir, webdir, datadir, port=8070,
+def serve(userdir, webdir, datadir, templatedir,
+          port=8070,
           evt3dir='/data/L3/chs_master_match/input/stkevt3'):
 
-    for dirname in [userdir, webdir, datadir, evt3dir]:
+    for dirname in [userdir, webdir, datadir, evt3dir, templatedir]:
         if not os.path.isdir(dirname):
             raise IOError("Not a directory: {}".format(dirname))
+
+    env = Environment(loader=FileSystemLoader(templatedir),
+                      autoescape=select_autoescape(['html']))
 
     store = {'userdir': userdir,
              'webdir': webdir,
              'datadir': datadir,
-             'evt3dir': evt3dir}
+             'evt3dir': evt3dir,
+             'environment': env}
 
     server_address = ('', port)
     httpd = CHSServer(store, server_address, CHSHandler)
@@ -2882,9 +2677,14 @@ if __name__ == "__main__":
     webassets = os.path.join(thisdir, '../webassets')
     webassets = os.path.normpath(webassets)
 
+    # Want a directory that can be used in testing.
+    #
+    templatedir = os.path.join(webassets, 'templates')
+
     # Store the user's files in the current working directory
     #
     userdir = os.getcwd()
 
     serve(userdir=userdir, webdir=webassets,
-          datadir=datadir, port=port)
+          datadir=datadir, templatedir=templatedir,
+          port=port)
