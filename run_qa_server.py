@@ -1695,7 +1695,7 @@ def serve(userdir, webdir, datadir, templatedir,
 
     server_address = ('', port)
     httpd = CHSServer(store, server_address, CHSHandler)
-    print("Starting server on http://localhost:{}/".format(port))
+    log("Starting server on http://localhost:{}/".format(port))
     httpd.serve_forever()
 
 
