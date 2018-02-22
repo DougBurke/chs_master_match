@@ -1,0 +1,69 @@
+#infobar {
+  float: left;
+  width: 20em;
+}
+
+#infobar div {
+  border: 1px solid black;
+  padding: 0.2em 0.5em;
+  margin-bottom: 1em;
+}
+
+#overviewbar {
+  float: left;
+}
+
+.info {
+  display: grid;
+  grid-gap: 0.2em;
+  grid-template-columns: 7em 7em;
+
+}
+
+.label {
+  grid-column: 1 / 3;
+  /* text-align: center; */
+}
+
+#username {
+  border: 1px solid black;
+  float: right;
+  font-size: x-large;
+  padding: 0.2em 0.5em;
+}
+
+th {
+  background: rgba(102, 204, 102, 0.4);
+}
+
+tr:nth-child(even) {
+  background: rgba(102, 102, 204, 0.4);
+}
+
+/* Ensure the decision field fills all the space */
+td:nth-child(4) {
+  width: 100%;
+}
+
+td.undecided {
+  background-color: orange;
+}
+
+#final {
+  text-align: center;
+}
+
+#finish {
+}
+
+#home {
+  text-align: center;
+}
+
+#home a {
+  display: inline-block;
+  padding: 0.2em 0.5em;
+}
+
+#home a:hover {
+}
