@@ -1,6 +1,39 @@
+/*
+ * functions for the index page
+ */
+
 function plural(x) { if (x === 1) { return ""; } else { return "s"; } }
 
 function nens(n) { return n.toString() + " ensemble" + plural(n); }
+
+function add_ensemble_row(parent, ens) {
+
+  const tr = document.createElement("tr");
+  // tr.className = "ensemble";  // remove styling just for now
+
+  let td = document.createElement("td");
+  const a = document.createElement("a");
+  a.href = ens['name'];
+  a.innerHTML = ens['name'];
+  td.appendChild(a);
+  tr.appendChild(td);
+
+  // TODO: how to work out the number of remaining hulls
+  td = document.createElement("td");
+  td.innerHTML = ens['nmasters'].toString();
+  tr.appendChild(td);
+
+  td = document.createElement("td");
+  td.innerHTML = ens['nmasters'].toString();
+  tr.appendChild(td);
+
+  td = document.createElement("td");
+  td.innerHTML = ens['nstacks'].toString();
+  tr.appendChild(td);
+
+  parent.appendChild(tr);
+}
+
 
 function updatePage(json) {
   const ntodos = json.todos.length;
@@ -12,7 +45,7 @@ function updatePage(json) {
   document.getElementById("ncompleted").innerHTML = nens(ncompleted);
 
   // TODO: do we have to clear out these divs?
-  var parent = document.getElementById("todo");
+  var parent = document.getElementById("todo-table-body");
   for (let i = 0; i < ntodos; i++) {
     let ens = json.todos[i];
 
@@ -20,17 +53,7 @@ function updatePage(json) {
     //       or just do away with this concept (but would be nice
     //       to know which ones you've worked on)
     //
-    let el = document.createElement("a");
-    el.className = "ensemble";
-    el.href = ens['name'];
-    el.innerHTML = ens['name'] + "<br>" +
-        ens['nmasters'].toString() +
-        " remaining of " +
-        ens['nmasters'].toString() + ", " +
-        ens['nstacks'].toString() + " stack" + plural(ens['nstacks']) +
-        "<br>N/A";
-
-    parent.appendChild(el);
+    add_ensemble_row(parent, ens);
   }
 
   parent = document.getElementById("review");
@@ -62,6 +85,9 @@ function updatePage(json) {
 
     parent.appendChild(el);
   }
+
+  // initialise the data tables
+  $('#todo-table').DataTable();
 }
 
 const spinopts = {

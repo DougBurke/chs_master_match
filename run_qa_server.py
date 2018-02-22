@@ -391,9 +391,11 @@ def parse_datadir(datadir):
 
     # HACK: use a subset of ensembles to save time
     #
+    """
     nmax = 60
     dbg("restricting to first {} ensembles".format(nmax))
     ensembledirs = ensembledirs[:nmax]
+    """
 
     # Get the latest version of each ensemble
     #

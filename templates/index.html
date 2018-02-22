@@ -4,7 +4,12 @@
     <meta charset='UTF-8'>
     <title>CHS review</title>
     <link rel='stylesheet' type='text/css' href='/css/index.css'>
+    <link rel='stylesheet' type='text/css'
+	  href='/css/datatables/jquery.dataTables.min.css'>
     <script src='/js/js9/js/spin.js'></script>
+
+    <script src='/js/js9/js/jquery.js'></script>
+    <script src='/js/datatables/jquery.dataTables.min.js'></script>
     <script src='/js/index.js'></script>
   </head>
   <body onload='initialize();'>
@@ -28,13 +33,28 @@
     <button id='saveusercontent' class='button'>Save notes</button>
 
     <p class='label'>To do</p>
-    <div id='todo' class='selection'></div>
+    <div id='todo' class='selection'>
+      <table id='todo-table' class='display'>
+	<thead>
+	  <tr>
+	    <th>Ensemble</th>
+	    <th>To do</th>
+	    <th>Masters</th>
+	    <th>Stacks</th>
+	  </tr>
+	</thead>
+	<tbody id='todo-table-body'>
+	</tbody>
+      </table>
+    </div>
 
     <p class='label'>Review</p>
-    <div id='review' class='selection'></div>
+    <div id='review' class='selection'>
+    </div>
 
     <p class='label'>Completed</p>
-    <div id='completed' class='selection'></div>
+    <div id='completed' class='selection'>
+    </div>
 
   </body>
 </html>
