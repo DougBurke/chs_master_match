@@ -555,7 +555,7 @@ def get_data_summary(datadir, userdir):
 
     state = parse_datadir(datadir, userdir)
     if state is None:
-        return state
+        return None
 
     # split up the ensembles
     #
@@ -563,7 +563,9 @@ def get_data_summary(datadir, userdir):
     #
     out = {'todos': [],
            'reviews': [],
-           'completed': []}
+           'completed': [],
+           'usernotes': '',
+           'lastmodified': ''}
     for ens in state:
         if ens['status'] == 'completed':
             key = 'completed'
@@ -574,6 +576,17 @@ def get_data_summary(datadir, userdir):
 
         out[key].append(ens)
 
+    # Has the user saved any notes?
+    infile = os.path.join(userdir, 'summary.json')
+    if not os.path.isfile(infile):
+        return out
+
+    jcts = read_json(infile)
+    if jcts is None:
+        return out
+
+    out['usernotes'] = jcts['usernotes']
+    out['lastmodified'] = jcts['lastmodified']
     return out
 
 
@@ -871,6 +884,26 @@ def get_data_master(datadir, userdir, rawdir, ensemble, masterid):
                               'dec': sdec,
                               'regstr': regstr})
     return out
+
+
+def save_summary(userdir, data):
+    """Save the summary details.
+
+    Parameters
+    ----------
+    userdir : str
+        The location for the user-stored data.
+    data : dict
+        The JSON dictionary containing the elements to write out.
+    """
+
+    outname = 'summary.json'
+    outfile = os.path.join(userdir, outname)
+
+    store = {"lastmodified": time.asctime(),
+             "usernotes": data['usernotes']}
+    with open(outfile, 'w') as fh:
+        fh.write(json.dumps(store))
 
 
 def save_ensemble(userdir, data):
@@ -1606,7 +1639,11 @@ class CHSHandler(BaseHTTPRequestHandler):
             return
 
         # Until we handle other saves
-        if path not in ['save/ensemble', 'save/master']:
+        try:
+            savefunc = {'save/summary': save_summary,
+                        'save/ensemble': save_ensemble,
+                        'save/master': save_master}[path]
+        except KeyError:
             errlog("Unexpected POST path={}".format(path))
             self.send_error(404)
             return
@@ -1630,11 +1667,8 @@ class CHSHandler(BaseHTTPRequestHandler):
         context = self.server.context
         userdir = context['userdir']
 
-        f = {'save/ensemble': save_ensemble,
-             'save/master': save_master}[path]
-
         try:
-            f(userdir, jcts)
+            savefunc(userdir, jcts)
         except Exception as exc:
             errlog("Unable to save data: {}".format(exc))
             self.send_error(404)

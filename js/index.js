@@ -4,6 +4,8 @@
 
 "use strict";
 
+var usernotes = "";
+
 function plural(x) { if (x === 1) { return ""; } else { return "s"; } }
 
 function nens(n) { return n.toString() + " ensemble" + plural(n); }
@@ -46,7 +48,58 @@ function add_ensemble_row(parent, ens) {
   parent.appendChild(tr);
 }
 
+// Send a save message if the contents have changed.
+//
+function saveUserContent() {
+  const newval = document.getElementById('usercontent').value;
+
+  if (newval === usernotes) {
+    return;
+  }
+
+  let httpRequest = new XMLHttpRequest();
+  if (!httpRequest) {
+      alert("Unable to create a XMLHttpRequest!");
+      return;
+  }
+
+  // Add the spinner to the whole page
+  //
+  let body = document.getElementsByTagName("body")[0];
+  let spinner = new Spinner(spinopts);
+  spinner.spin(body);
+
+  // Update the local state once the save has been made
+  httpRequest.addEventListener("load", function() {
+    usernotes = newval;
+  });
+  httpRequest.addEventListener("error", function() {
+      alert("Unable to save data!");
+  });
+  httpRequest.addEventListener("abort", function() {
+      alert("Unable to save data!");
+  });
+  httpRequest.addEventListener("loadend", function() {
+      spinner.stop();
+  });
+
+  const store = {usernotes: newval};
+  httpRequest.open('POST', '/save/summary');
+  httpRequest.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+  httpRequest.send(JSON.stringify(store));
+  
+}
+
 function updatePage(json) {
+
+  document.getElementById("usercontent").value = json.usernotes;
+  usernotes = json.usernotes;
+
+  // Allow the user to add notes
+  document.getElementById("saveusercontent")
+      .addEventListener("click",
+			(e) => { saveUserContent(); });
+
   const ntodos = json.todos.length;
   const nreviews = json.reviews.length;
   const ncompleted = json.completed.length;
