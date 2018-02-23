@@ -62,7 +62,7 @@ function saveUserContent() {
   const newval = document.getElementById('usercontent').value;
 
   const info = state.versions[latestRevision];
-  if (newval === info.usernotes) {
+  if (newval === info.usernotes.user) {
     return;
   }
 
@@ -80,7 +80,7 @@ function saveUserContent() {
 
   // Update the local state once the save has been made
   httpRequest.addEventListener("load", function() {
-    info.usernotes = newval;
+    info.usernotes.user = newval;
   });
   httpRequest.addEventListener("error", function() {
       alert("Unable to save data!");
@@ -161,7 +161,14 @@ function setVersion(revision) {
 
   // Update the "user content" section
   const usernotes = document.getElementById("usercontent");
-  usernotes.value = info.usernotes || "";
+
+  // We always use the user version if set, even if it is empty.
+  //
+  if (info.usernotes.user !== null) {
+    usernotes.value = info.usernotes.user;
+  } else {
+    usernotes.value = info.usernotes.proposed;
+  }
 
   const usersave = document.getElementById("saveusercontent");
 

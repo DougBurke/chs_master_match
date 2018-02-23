@@ -72,6 +72,7 @@ import os
 import sys
 import time
 
+import six
 from six.moves.BaseHTTPServer import BaseHTTPRequestHandler, \
     HTTPServer
 
@@ -300,14 +301,25 @@ def read_ensemble_json(datadir, userdir, ensemble):
                   ['masterid'] => str (001, ...)
                   ['ncpts'] == len(cpts)
                   ---- ['cpts'] => list of ?
-                  ['useraction'] => str, can be ''
+                  ['useraction'] =>
                   ['lastmodified'] =>
+
+           ['usernotes']
+           ['lastmodified']
+
+    The usernotes and lastmodified fields are dicts with two keys:
+      proposed
+      user
+    which allows the user to "over ride" the proposed value. At least
+    for the ensemble-level (not yet applied to the hull level)
 
 hmmm, the JSON data has {"status": "todo", "stackmap": {"acisfJ1705367m403832_001": 3, "acisfJ1704041m414416_001": 1, "acisfJ1702545m412821_001": 0, "acisfJ1705559m410515_001": 4, "acisfJ1704448m410953_001": 2}, "nmasters": 1, "name": "ens0000900_001", "lastmodified": "", "ncpts": 2, "usernotes": "", "nstacks": 2, "revision": "001"}
 
 
     """
 
+    # Process the proposed settings first
+    #
     pat = "field.{}.*.json".format(ensemble)
     inpat = os.path.join(datadir, ensemble, pat)
     matches = glob.glob(inpat)
@@ -315,6 +327,21 @@ hmmm, the JSON data has {"status": "todo", "stackmap": {"acisfJ1705367m403832_00
         errlog("no field.json files found for ensemble " +
                "{} - {}".format(ensemble, inpat))
         return None
+
+    def override(store, key):
+
+        try:
+            v = store[key]
+        except KeyError:
+            warn("NO {} field: ensemble {}".format(key, ensemble))
+            v = ''
+
+        if not isinstance(v, six.string_types):
+            errlog("{} is not a string but {}".format(key, v))
+            return False
+
+        store[key] = {'proposed': v, 'user': None}
+        return True
 
     store = {'versions': {}}
     for match in matches:
@@ -338,7 +365,7 @@ hmmm, the JSON data has {"status": "todo", "stackmap": {"acisfJ1705367m403832_00
         for mid in range(1, jcts['nmasters'] + 1):
             hull = read_ensemble_hull_json(datadir, ensemble, mid, v)
             if hull is None:
-                # if there'sa problem reading in a single hull, then
+                # if there is a problem reading in a single hull, then
                 # bail out for the whole thing
                 return None
 
@@ -354,6 +381,14 @@ hmmm, the JSON data has {"status": "todo", "stackmap": {"acisfJ1705367m403832_00
         jcts['masters'] = hulls
         store['versions'][v] = jcts
 
+        # Override the useraction and lastmodified values
+        #
+        if not override(jcts, 'usernotes'):
+            return None
+
+        if not override(jcts, 'lastmodified'):
+            return None
+
     revs = list(store['versions'].keys())
     if len(revs) == 0:
         errlog("no JSON data read from ensemble: " +
@@ -362,6 +397,31 @@ hmmm, the JSON data has {"status": "todo", "stackmap": {"acisfJ1705367m403832_00
 
     revs = sorted(revs, key=int, reverse=True)
     store['latest_version'] = revs[0]
+
+    # Now check for user overrides: at present only at the
+    # field level.
+    #
+    inpat = os.path.join(userdir, ensemble, pat)
+    matches = glob.glob(inpat)
+    if len(matches) == 0:
+        return store
+
+    # Assume very-limited metadata here.
+    #
+    for match in matches:
+        jcts = read_json(match)
+
+        revision = jcts['revision']
+
+        try:
+            base = store['versions'][revision]
+        except KeyError:
+            warn("{} has invalid version {}".format(match,
+                                                    revision))
+            continue
+
+        for k in ['lastmodified', 'usernotes']:
+            base[k]['user'] = jcts[k]
 
     return store
 
