@@ -187,17 +187,19 @@ function setVersion(revision) {
   // a) are we the latest version
   // b) do all the hulls have a user action?
   //
-  const finish = document.getElementById('final');
+  // const finish = document.getElementById('final');
   if (isLatest) {
+      /* for now just hide as unsure what to do
     finish.style.display = 'block';
     document.getElementById('finish')
             .disabled = !all_hulls_have_useraction;
+      */
 
     usersave.addEventListener("click",
 			      (e) => { saveUserContent(); });
 
   } else {
-    finish.style.disply = 'none';
+      // finish.style.disply = 'none';
 
     usersave.disabled = true;
   }
