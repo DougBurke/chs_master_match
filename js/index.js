@@ -15,27 +15,36 @@ function add_ensemble_row(parent, ens) {
 
   let td = document.createElement("td");
   const a = document.createElement("a");
-  a.href = ens['name'];
-  a.innerHTML = ens['name'];
+  a.href = ens.name;
+  a.innerHTML = ens.name;
   td.appendChild(a);
   tr.appendChild(td);
 
-  // TODO: how to work out the number of remaining hulls
+  // We consider those hulls in the masters array which have
+  // useraction.user set to a non-empty value to be "done".
+  //
+  let done = 0;
+  for (var h of ens.masters) {
+      const ua = h.useraction.user;
+      if ((ua !== null) && (ua !== "")) { done += 1; }
+  }
+
+  const rem = ens.nmasters - done;
+
   td = document.createElement("td");
-  td.innerHTML = ens['nmasters'].toString();
+  td.innerHTML = rem.toString();
   tr.appendChild(td);
 
   td = document.createElement("td");
-  td.innerHTML = ens['nmasters'].toString();
+  td.innerHTML = ens.nmasters.toString();
   tr.appendChild(td);
 
   td = document.createElement("td");
-  td.innerHTML = ens['nstacks'].toString();
+  td.innerHTML = ens.nstacks.toString();
   tr.appendChild(td);
 
   parent.appendChild(tr);
 }
-
 
 function updatePage(json) {
   const ntodos = json.todos.length;
@@ -61,31 +70,13 @@ function updatePage(json) {
   parent = document.getElementById("review");
   for (let i = 0; i < nreviews; i++) {
     let ens = json.reviews[i];
-
-    // TODO: need to work out the number of remaining hulls
-    let el = document.createElement("a");
-    el.className = "ensemble";
-    el.href = ens['name'];
-    el.innerHTML = ens['name'] + "<br>" +
-        ens['nmasters'].toString() + " hulls, " +
-        ens['nstacks'].toString() + " stack" + plural(ens['nstacks']);
-
-    parent.appendChild(el);
+    add_ensemble_row(parent, ens);
   }
 
   parent = document.getElementById("completed");
   for (let i = 0; i < ncompleted; i++) {
     let ens = json.completed[i];
-
-    // TODO: need to work out the number of remaining hulls
-    let el = document.createElement("a");
-    el.className = "ensemble";
-    el.href = ens['name'];
-    el.innerHTML = ens['name'] + "<br>" +
-        ens['nmasters'].toString() + " hulls, " +
-        ens['nstacks'].toString() + " stack" + plural(ens['nstacks']);
-
-    parent.appendChild(el);
+    add_ensemble_row(parent, ens);
   }
 
   // initialise the data tables
