@@ -2,6 +2,8 @@
  * functions for the index page
  */
 
+"use strict";
+
 function plural(x) { if (x === 1) { return ""; } else { return "s"; } }
 
 function nens(n) { return n.toString() + " ensemble" + plural(n); }
