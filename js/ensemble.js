@@ -147,12 +147,18 @@ function setVersion(revision) {
     el.appendChild(td);
 
     td = document.createElement("td");
-    if (m.useraction === '') {
+    let ua = '';
+    if (m.useraction.user !== null) {
+      ua = m.useraction.user;
+    } else {
+      ua = m.useraction.proposed;
+    }
+    if (ua === '') {
       td.className = "undecided";
       td.innerHTML = "NO DECISION";
       all_hulls_have_useraction = false;
     } else {
-      td.innerHTML = m.useraction;
+      td.innerHTML = ua;
     }
     el.appendChild(td);
 

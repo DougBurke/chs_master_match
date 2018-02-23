@@ -721,6 +721,80 @@ if (JS9.Regions.opts.onchange !== null) {
 
 JS9.Regions.opts.onchange = handleRegionChange;
 
+// Save user selections
+//
+function saveUser(store, field, newval) {
+  let httpRequest = new XMLHttpRequest();
+  if (!httpRequest) {
+      alert("Unable to create a XMLHttpRequest!");
+      return;
+  }
+
+  // Add the spinner to the whole page
+  //
+  let body = document.getElementsByTagName("body")[0];
+  let spinner = new Spinner(spinopts);
+  spinner.spin(body);
+
+  // Update the local state once the save has been made. Note this happens
+  // even during an error, I think.
+  // Since both fields can be changed, change both of them.
+  //
+  httpRequest.addEventListener("load", function() {
+    state.useraction.user = store.useraction;
+    state.usernotes.user = store.usernotes;
+  });
+  httpRequest.addEventListener("error", function() {
+      alert("Unable to save data!");
+  });
+  httpRequest.addEventListener("abort", function() {
+      alert("Unable to save data!");
+  });
+  httpRequest.addEventListener("loadend", function() {
+      spinner.stop();
+  });
+
+  httpRequest.open('POST', '/save/master');
+  httpRequest.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+  httpRequest.send(JSON.stringify(store));
+  
+}
+
+function saveUserContent() {
+  const newval = document.getElementById('usercontent').value;
+  if (newval === state.usernotes.user) {
+    return;
+  }
+  const store = {ensemble: settings.ensemble,
+		 revision: settings.revstr,
+		 masterid: settings.masterid,
+		 useraction: "",
+		 usernotes: newval};
+
+  // You should only be able to save concent if this is the
+  // latest version, so choice should always be set here.
+  //
+  const choice = document.getElementById('choice');
+  if (choice !== null) {
+      store.useraction = choice.value;
+  }
+  saveUser(store, "usernotes", newval);
+}
+
+// Note: this also saves any changes to the user content.
+//       It could ignore that, but that seems surprising to the
+//       user, and makes the "choice" button a "final arbiter".
+//
+function saveUserChoice(newval) {
+  const notes = document.getElementById('usercontent').value;
+  const store = {ensemble: settings.ensemble,
+		 revision: settings.revstr,
+		 masterid: settings.masterid,
+		 useraction: newval,
+		 usernotes: notes};
+  saveUser(store);
+}
+
 /* play with websamp */
 
 var sampConnection;
@@ -752,20 +826,11 @@ function finalize() {
   }
 }
 
-function initialize(opts) {
+// Set up the page
 
-  settings = Object.assign({}, opts);
+function updatePage(json) {
 
-  /*** For the moment comment out the samp code, as the
-       continual checking is making some unrelated
-       tasks hard to debug/work on.
-  if (typeof sampConnection === "undefined") {
-    sampConnection = new samp.Connector("CHS Sender");
-    sampConnection.onHubAvailability(sampIsAvailable, 2000);
-  }
-  ***/
-  sampIsAvailable(false);
-
+  state = Object.assign({}, json);
 
   document.getElementById('imgscale').
     addEventListener("change", (e) => { setScaling(e.target.value); });
@@ -786,4 +851,108 @@ function initialize(opts) {
   }
 
   setPage(1);
+
+  // Update the "user content" section
+  const usernotes = document.getElementById("usercontent");
+
+  // We always use the user version if set, even if it is empty.
+  //
+  if (state.usernotes.user !== null) {
+    usernotes.value = state.usernotes.user;
+  } else {
+    usernotes.value = state.usernotes.proposed;
+  }
+
+  document.getElementById("saveusercontent")
+      .addEventListener("click",
+			(e) => { saveUserContent(); });
+
+  // Now for the user action button.
+  //
+  // The choice is only present for the latest version, otherwise
+  // it's just a label (i.e. non-interactive part of the UI).
+  //
+  let ua = "";
+  if (state.useraction.user === null) {
+    ua = state.useraction.proposed;
+  } else {
+    ua = state.useraction.user;
+  }
+
+  const choice = document.getElementById('choice');
+  if (choice === null) {
+      let lbl;
+      if (ua === "accept") { lbl = "Accept"; }
+      else if (ua === "delete") { lbl = "Delete Master"; }
+      else if (ua === "manual") { lbl = "Manual"; }
+      else if (ua === "") { lbl = "ERROR: no action recorded"; }
+      else { lbl = ua; }
+
+      document.getElementById('chosen').innerHTML = lbl;
+      return;
+  }
+
+  // set up the chosen value
+  choice.value = ua;
+
+  choice.addEventListener("change",
+			  (e) => { saveUserChoice(e.target.value); });
+}
+
+
+const spinopts = {
+    color: "#FF0000", opacity: 0.4,
+    radius: 20, length: 20, width: 7
+};
+
+
+function initialize(opts) {
+
+  settings = Object.assign({}, opts);
+
+
+  /*** For the moment comment out the samp code, as the
+       continual checking is making some unrelated
+       tasks hard to debug/work on.
+  if (typeof sampConnection === "undefined") {
+    sampConnection = new samp.Connector("CHS Sender");
+    sampConnection.onHubAvailability(sampIsAvailable, 2000);
+  }
+  ***/
+  sampIsAvailable(false);
+
+  let httpRequest = new XMLHttpRequest();
+  if (!httpRequest) {
+      alert("Unable to create a XMLHttpRequest!");
+      return;
+  }
+
+  // Add the spinner to the whole page
+  //
+  let body = document.getElementsByTagName("body")[0];
+  let spinner = new Spinner(spinopts);
+  spinner.spin(body);
+
+  httpRequest.addEventListener("load", function() {
+    updatePage(httpRequest.response);
+  });
+  httpRequest.addEventListener("error", function() {
+      alert("Unable to load data!");
+  });
+  httpRequest.addEventListener("abort", function() {
+      alert("Unable to load data!");
+  });
+  httpRequest.addEventListener("loadend", function() {
+      spinner.stop();
+  });
+
+  // Do I need to add a cache-busting identifier?
+  httpRequest.open('GET', '/api/' +
+		   settings.ensemble + '/' +
+		   settings.revstr + '/' +
+		   settings.masterid + '?' +
+                   (new Date()).getTime());
+  httpRequest.responseType = 'json';
+  httpRequest.send();
+
 }

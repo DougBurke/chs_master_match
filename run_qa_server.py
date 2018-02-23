@@ -234,7 +234,47 @@ def read_json(infile):
     return jcts
 
 
-def read_ensemble_hull_json(datadir, ensemble, mid, revision):
+def setup_user_setting(store, key):
+    """Add in user-level version.
+
+    This is highly-specialized. It changes the key value to
+    be a dictionary with 'proposed' and 'user' keywords,
+    storing the current value under 'proposed' and setting
+    'user' to None.
+
+    Parameters
+    ----------
+    store : dict
+        A dictiionary which is assumed to contain the supplied
+        key, and the value of the key is a string.
+    key : dict_key
+        The key value.
+
+    Returns
+    -------
+    flag : bool
+        If False then the stored value was nto a string so nothing
+        has been changed. It is expected that this will cause
+        down stream to trigger an error handler.
+
+    """
+
+    try:
+        v = store[key]
+    except KeyError:
+        warn("NO {} field".format(key))
+        v = ''
+
+    if not isinstance(v, six.string_types):
+        errlog("{} is not a string but {}".format(key, v))
+        return False
+
+    store[key] = {'proposed': v, 'user': None}
+    return True
+
+
+def read_ensemble_hull_json(datadir, userdir,
+                            ensemble, mid, revision):
     """Return JSON-stored data for the masters.
 
     Parameters
@@ -242,6 +282,8 @@ def read_ensemble_hull_json(datadir, ensemble, mid, revision):
     datadir : str
         The path to the directory containing the ensemble-level
         products.
+    userdir : str
+        The path to the directory containing the user's decisions.
     ensemble : str
         The ensemble.
     mid : int
@@ -264,7 +306,32 @@ def read_ensemble_hull_json(datadir, ensemble, mid, revision):
     if jcts is None:
         return None
 
-    # raise NotImplementedError()
+    # Setup for user information.
+    #
+    for key in ['usernotes', 'useraction', 'lastmodified']:
+        if not setup_user_setting(jcts, key):
+            return None
+
+    # Now add in any user information
+    #
+    infile = os.path.join(userdir, ensemble,
+                          'hull.{}.{:03d}.v{}.json'.format(ensemble,
+                                                           mid,
+                                                           revision))
+
+    # This is an optional file, so avoid warning messages in the log
+    # if we can help it.
+    if not os.path.exists(infile):
+        return jcts
+
+    ucts = read_json(infile)
+    if ucts is None:
+        return jcts
+
+    for key in ['usernotes', 'useraction', 'lastmodified']:
+        if key in ucts:
+            jcts[key]['user'] = ucts[key]
+
     return jcts
 
 
@@ -301,17 +368,18 @@ def read_ensemble_json(datadir, userdir, ensemble):
                   ['masterid'] => str (001, ...)
                   ['ncpts'] == len(cpts)
                   ---- ['cpts'] => list of ?
+                  ['usernotes'] =>
                   ['useraction'] =>
                   ['lastmodified'] =>
 
            ['usernotes']
            ['lastmodified']
 
-    The usernotes and lastmodified fields are dicts with two keys:
+    The usernotes, useraction, and lastmodified fields are dicts with
+    two keys:
       proposed
       user
-    which allows the user to "over ride" the proposed value. At least
-    for the ensemble-level (not yet applied to the hull level)
+    which allows the user to "over ride" the proposed value.
 
 hmmm, the JSON data has {"status": "todo", "stackmap": {"acisfJ1705367m403832_001": 3, "acisfJ1704041m414416_001": 1, "acisfJ1702545m412821_001": 0, "acisfJ1705559m410515_001": 4, "acisfJ1704448m410953_001": 2}, "nmasters": 1, "name": "ens0000900_001", "lastmodified": "", "ncpts": 2, "usernotes": "", "nstacks": 2, "revision": "001"}
 
@@ -327,21 +395,6 @@ hmmm, the JSON data has {"status": "todo", "stackmap": {"acisfJ1705367m403832_00
         errlog("no field.json files found for ensemble " +
                "{} - {}".format(ensemble, inpat))
         return None
-
-    def override(store, key):
-
-        try:
-            v = store[key]
-        except KeyError:
-            warn("NO {} field: ensemble {}".format(key, ensemble))
-            v = ''
-
-        if not isinstance(v, six.string_types):
-            errlog("{} is not a string but {}".format(key, v))
-            return False
-
-        store[key] = {'proposed': v, 'user': None}
-        return True
 
     store = {'versions': {}}
     for match in matches:
@@ -363,7 +416,8 @@ hmmm, the JSON data has {"status": "todo", "stackmap": {"acisfJ1705367m403832_00
 
         hulls = []
         for mid in range(1, jcts['nmasters'] + 1):
-            hull = read_ensemble_hull_json(datadir, ensemble, mid, v)
+            hull = read_ensemble_hull_json(datadir, userdir,
+                                           ensemble, mid, v)
             if hull is None:
                 # if there is a problem reading in a single hull, then
                 # bail out for the whole thing
@@ -383,11 +437,9 @@ hmmm, the JSON data has {"status": "todo", "stackmap": {"acisfJ1705367m403832_00
 
         # Override the useraction and lastmodified values
         #
-        if not override(jcts, 'usernotes'):
-            return None
-
-        if not override(jcts, 'lastmodified'):
-            return None
+        for key in ['usernotes', 'lastmodified']:
+            if not setup_user_setting(jcts, key):
+                return None
 
     revs = list(store['versions'].keys())
     if len(revs) == 0:
@@ -853,6 +905,43 @@ def save_ensemble(userdir, data):
         fh.write(json.dumps(store))
 
 
+def save_master(userdir, data):
+    """Save the master-level details.
+
+    Parameters
+    ----------
+    userdir : str
+        The location for the user-stored data.
+    data : dict
+        The JSON dictionary containing the elements to write out.
+    """
+
+    ensemble = data['ensemble']
+    version = data['revision']  # this is in string form, 0 padded
+    masterid = data['masterid']
+
+    outdir = os.path.join(userdir, ensemble)
+    if os.path.exists(outdir):
+        if not os.path.isdir(outdir):
+            raise IOError("Exists but not a directory! {}".format(outdir))
+    else:
+        os.mkdir(outdir)
+
+    outname = 'hull.{}.{:03d}.v{}.json'.format(ensemble,
+                                               masterid,
+                                               version)
+    outfile = os.path.join(outdir, outname)
+
+    store = {"ensemble": ensemble,
+             "masterid": masterid,
+             "lastmodified": time.asctime(),
+             "usernotes": data['usernotes'],
+             "useraction": data['useraction'],
+             "revision": version}
+    with open(outfile, 'w') as fh:
+        fh.write(json.dumps(store))
+
+
 def apply_template(env, tmplname, args):
 
     try:
@@ -909,6 +998,10 @@ def create_ensemble_index_page(env, datadir, userdir, ensemble):
         The response status and HTML contents
     """
 
+    """
+    I guess we could error out here rather than when the AJAX
+    call fails, but let's see how this works
+
     state = read_ensemble_json(datadir, userdir, ensemble)
     if state is None:
         out = "<!DOCTYPE html><html><head><title>ERROR</title>"
@@ -917,6 +1010,8 @@ def create_ensemble_index_page(env, datadir, userdir, ensemble):
         out += "ensemble {}".format(ensemble)
         out += "</body></html>"
         return 404, out
+
+    """
 
     # Could cache the username
     return apply_template(env, 'ensemble.html',
@@ -1511,7 +1606,7 @@ class CHSHandler(BaseHTTPRequestHandler):
             return
 
         # Until we handle other saves
-        if path != 'save/ensemble':
+        if path not in ['save/ensemble', 'save/master']:
             errlog("Unexpected POST path={}".format(path))
             self.send_error(404)
             return
@@ -1535,7 +1630,8 @@ class CHSHandler(BaseHTTPRequestHandler):
         context = self.server.context
         userdir = context['userdir']
 
-        f = save_ensemble
+        f = {'save/ensemble': save_ensemble,
+             'save/master': save_master}[path]
 
         try:
             f(userdir, jcts)
@@ -1575,10 +1671,7 @@ class CHSHandler(BaseHTTPRequestHandler):
         Supported are:
            summary
            ensxxxxxxx_xxx
-           ensxxxxxxx_xxx/xxx   NOT USED
-
-        Note that, as coded, the ensxxx/yyy version can not work,
-        so need to see if actually needed.
+           ensxxxxxxx_xxx/vvv/xxx
 
         """
 
@@ -1596,9 +1689,6 @@ class CHSHandler(BaseHTTPRequestHandler):
 
         toks = path.split('/')
         ntoks = len(toks)
-        if ntoks > 2:
-            self.send_error(404)
-            return
 
         ensemble = toks[0]
         if not valid_ensemble(datadir, ensemble):
@@ -1610,16 +1700,25 @@ class CHSHandler(BaseHTTPRequestHandler):
             self.send_as_json(cts)
             return
 
-        # I DO NOT BELIEVE THIS PART OF THE CODE IS REACHED
-        errlog("UNEXPECTED CODE EXECUTION")
+        elif ntoks != 3:
+            self.send_error(404)
+            return
+
+        # This is expected to already be in 001 form.
+        revision = toks[1]
 
         try:
-            masterid = int(toks[1])
+            masterid = int(toks[2])
         except ValueError:
+            errlog("Invalid master id: {}".format(toks[2]))
             self.send_error(404)
 
-        cts = get_data_master(datadir, userdir, ensemble, masterid)
-        self.send_as_json(cts)
+        cts = read_ensemble_hull_json(datadir, userdir,
+                                      ensemble, masterid, revision)
+        if cts is None:
+            self.send_error(404)
+        else:
+            self.send_as_json(cts)
 
     def get_regions(self, path):
         """Return the requested region data as JSON.

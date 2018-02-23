@@ -14,7 +14,9 @@
 
     <script type="text/javascript" src="/js/extern/convexhull.js"></script>
 
+    <!-- removed SAMP support for now
     <script type="text/javascript" src="/js/extern/samp.js"></script>
+    -->
 
     <script type="text/javascript" src="/js/masterhull.js"></script>
     <link rel='stylesheet' type='text/css' href='/css/hull.css'>
@@ -132,32 +134,16 @@
 
 	<p>User action:</p>
 
+{# Filled in by JS on page load #}
 {% if is_latest %}
-
         <select required='true' id='choice' class='button'>
-          <option value=''
-          {% if hull['useraction'] == '' %} selected {% endif %}
-          ></option>
-	  <option value='accept'
-          {% if hull['useraction'] == 'accept' %} selected {% endif %}
-          >Accept</value>
-	  <option value='delete'
-          {% if hull['useraction'] == 'delete' %} selected {% endif %}
-          >Delete Master</value>
-	  <option value='manual'
-          {% if hull['useraction'] == 'manual' %} selected {% endif %}
-          >Manual</value>
+          <option value=''></option>
+	  <option value='accept'>Accept</value>
+	  <option value='delete'>Delete Master</value>
+	  <option value='manual'>Manual</value>
         </select>
-
 {% else %}
- {# TODO: apply the following mapping to useraction
-            action = {'': 'ERROR: no action recorded',
-                      'accept': 'Accept',
-                      'delete': 'Delete Master',
-                      'manual': 'Manual'}
-  #}
-        <p>{{ hull['useraction'] }}</p>
-
+        <p id='chosen'></p>
 {% endif %}
       </div>
 
