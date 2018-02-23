@@ -70,6 +70,7 @@ import gzip
 import json
 import os
 import sys
+import time
 
 from six.moves.BaseHTTPServer import BaseHTTPRequestHandler, \
     HTTPServer
@@ -822,6 +823,38 @@ def get_master_hull_regions(ensemble, masterid, datadir, rawdir):
     return get_data_master(datadir, rawdir, ensemble, masterid)
 
 
+def save_ensemble(userdir, data):
+    """Save the ensemble-level details.
+
+    Parameters
+    ----------
+    userdir : str
+        The location for the user-stored data.
+    data : dict
+        The JSON dictionary containing the elements to write out.
+    """
+
+    ensemble = data['name']
+    version = data['revision']  # this is in string form, 0 padded
+
+    outdir = os.path.join(userdir, ensemble)
+    if os.path.exists(outdir):
+        if not os.path.isdir(outdir):
+            raise IOError("Exists but not a directory! {}".format(outdir))
+    else:
+        os.mkdir(outdir)
+
+    outname = 'field.{}.v{}.json'.format(ensemble, version)
+    outfile = os.path.join(outdir, outname)
+
+    store = {"name": ensemble,
+             "lastmodified": time.asctime(),
+             "usernotes": data['usernotes'],
+             "revision": version}
+    with open(outfile, 'w') as fh:
+        fh.write(json.dumps(store))
+
+
 def apply_template(env, tmplname, args):
 
     try:
@@ -1457,12 +1490,55 @@ class CHSHandler(BaseHTTPRequestHandler):
         self.get_local_file(context['webdir'], path)
 
     def do_POST(self):
+
+        upath = urlparse.urlparse(self.path)
+        path = upath.path
+
+        # Strip the leading /
+        if path != "":
+            path = path[1:]
+
+        if not path.startswith('save/'):
+            errlog("Unexpected POST path={}".format(path))
+            self.send_error(404)
+            return
+
+        # Until we handle other saves
+        if path != 'save/ensemble':
+            errlog("Unexpected POST path={}".format(path))
+            self.send_error(404)
+            return
+
+        # for now require JSON
+        ctype = self.headers['Content-Type'].split(';')
+        if not ctype[0] == 'application/json':
+            errlog("Unexpected content-type: {}".format(ctype[0]))
+            self.send_error(404)
+            return
+
         clen = int(self.headers['Content-Length'])
         data = self.rfile.read(clen)
-        self._set_headers()
-        self.wfile.write("<html><body><h1>POST!</h1><pre>")
-        self.wfile.write(data)
-        self.wfile.write("</pre></body></html>")
+        try:
+            jcts = json.loads(data)
+        except Exception as exc:
+            errlog("Invalid JSON: {}".format(exc))
+            self.send_error(404)
+            return
+
+        context = self.server.context
+        userdir = context['userdir']
+
+        f = save_ensemble
+
+        try:
+            f(userdir, jcts)
+        except Exception as exc:
+            errlog("Unable to save data: {}".format(exc))
+            self.send_error(404)
+            return
+
+        self._set_headers(200)
+        self.wfile.write("")
 
     def send_as_json(self, cts):
         """Return cts as JSON data to the caller."""
@@ -1721,7 +1797,7 @@ if __name__ == "__main__":
     else:
         usage(sys.argv[0])
 
-    datadir = os.path.abspath(sys.argv[1])
+    datadir = os.path.normpath(os.path.abspath(sys.argv[1]))
 
     # The assets for the web server are obtained from the location
     # of the script (../webassets/).
@@ -1736,7 +1812,23 @@ if __name__ == "__main__":
 
     # Store the user's files in the current working directory
     #
-    userdir = os.getcwd()
+    userdir = os.path.normpath(os.getcwd())
+
+    # Validation check: ensure that the user directory is *not*
+    # within the data directory, to avois over-writing files.
+    #
+    cdir = os.path.commonprefix([datadir, userdir])
+    def stripify(d):
+        if d.endswith('/'):
+            return d[:-1]
+        else:
+            return d
+
+    if stripify(cdir) == stripify(datadir) or \
+            stripify(datadir) == stripify(userdir):
+        raise IOError("Userdir {} is a ".format(userdir) +
+                      "sub-directory of " +
+                      "Datadir {}".format(datadir))
 
     serve(userdir=userdir, webdir=webassets,
           datadir=datadir, templatedir=templatedir,
