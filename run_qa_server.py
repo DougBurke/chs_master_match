@@ -267,7 +267,7 @@ def read_ensemble_hull_json(datadir, ensemble, mid, revision):
     return jcts
 
 
-def read_ensemble_json(datadir, ensemble):
+def read_ensemble_json(datadir, userdir, ensemble):
     """Return JSON data from the ensemble.
 
     The returned structure contains all the versions for this
@@ -278,7 +278,9 @@ def read_ensemble_json(datadir, ensemble):
     ----------
     datadir : str
         The path to the directory containing the ensemble-level
-        products.
+        products. These are the "proposed" products.
+    userdir : str
+        The path to the directory containing the user's decisions.
     ensemble : str
         The ensemble.
 
@@ -364,7 +366,7 @@ hmmm, the JSON data has {"status": "todo", "stackmap": {"acisfJ1705367m403832_00
     return store
 
 
-def parse_datadir(datadir):
+def parse_datadir(datadir, userdir):
     """Extract useful information from the diretory.
 
     Parameters
@@ -372,6 +374,8 @@ def parse_datadir(datadir):
     datadir : str
         The path to the directory containing the ensemble-level
         products.
+    userdir : str
+        The path to the directory containing the user's decisions.
 
     Returns
     -------
@@ -405,7 +409,9 @@ def parse_datadir(datadir):
         ensemble = ensembledir.split('/')[-1]
         # UGH: this is ugly; note the /../ added to the path
         # TODO: fix this
-        jcts = read_ensemble_json(ensembledir + "/../", ensemble)
+        jcts = read_ensemble_json(ensembledir + "/../",
+                                  userdir,
+                                  ensemble)
         if jcts is None:
             continue
 
@@ -419,40 +425,7 @@ def parse_datadir(datadir):
     return [store[k] for k in keys]
 
 
-def parse_ensembledir(datadir, ensemble):
-    """Extract useful information from the diretory.
-
-    This extends read_ensemble_json to add in the per-master
-    information.
-
-    Parameters
-    ----------
-    datadir : str
-        The path to the directory containing the ensemble-level
-        products.
-    ensemble : str
-        The ensemble.
-
-    Returns
-    -------
-    state : dict or None
-        A dictionary or None, if no data can be found there.
-
-    Notes
-    -----
-    At present the contents of datadir are highly structured;
-    let's see if this will need relaxing.
-    """
-
-    jcts = read_ensemble_json(datadir, ensemble)
-    if jcts is None:
-        return None
-
-    # TODO: STUFF
-    return jcts
-
-
-def get_data_summary(datadir):
+def get_data_summary(datadir, userdir):
     """Return the data about all the available ensembles.
 
     Parameters
@@ -460,13 +433,15 @@ def get_data_summary(datadir):
     datadir : str
         The path to the directory containing the ensemble-level
         products.
+    userdir : str
+        The path to the directory containing the user's decisions.
 
     Returns
     -------
     summary : dict or None
     """
 
-    state = parse_datadir(datadir)
+    state = parse_datadir(datadir, userdir)
     if state is None:
         return state
 
@@ -488,26 +463,6 @@ def get_data_summary(datadir):
         out[key].append(ens)
 
     return out
-
-
-def get_data_ensemble(datadir, ensemble):
-    """Return the data about this ensemble.
-
-    Parameters
-    ----------
-    datadir : str
-        The path to the directory containing the ensemble-level
-        products.
-    ensemble : str
-        The ensemble id.
-
-    Returns
-    -------
-    summary : dict or None
-    """
-
-    state = parse_ensembledir(datadir, ensemble)
-    return state
 
 
 def read_ds9_region(infile):
@@ -650,7 +605,7 @@ def find_master_center(infile, masterid):
     return ra_mid, dec_mid
 
 
-def get_data_master(datadir, rawdir, ensemble, masterid):
+def get_data_master(datadir, userdir, rawdir, ensemble, masterid):
     """Return the data about this master hull.
 
     Parameters
@@ -658,6 +613,8 @@ def get_data_master(datadir, rawdir, ensemble, masterid):
     datadir : str
         The path to the directory containing the ensemble-level
         products.
+    userdir : str
+        The path to the directory containing the user's decisions.
     rawdir : str
         The path to the actual master hull data (fits and region files)
     ensemble : str
@@ -672,7 +629,7 @@ def get_data_master(datadir, rawdir, ensemble, masterid):
     # Need the latest version of the master hull. Now
     # read_ensemble_json does too much, but let's not worry about
     # that here.
-    state = read_ensemble_json(datadir, ensemble)
+    state = read_ensemble_json(datadir, userdir, ensemble)
     if state is None:
         return None
 
@@ -804,25 +761,6 @@ def get_data_master(datadir, rawdir, ensemble, masterid):
     return out
 
 
-def get_master_hull_regions(ensemble, masterid, datadir, rawdir):
-    """Return the master and stack hulls.
-
-    Parameters
-    ----------
-    ensemble : str
-    masterid : int
-    datadir : str
-    rawdir : str
-
-    Returns
-    -------
-    ans : dict or None
-
-    """
-
-    return get_data_master(datadir, rawdir, ensemble, masterid)
-
-
 def save_ensemble(userdir, data):
     """Save the ensemble-level details.
 
@@ -892,7 +830,7 @@ def create_index_page(env, datadir):
     return apply_template(env, 'index.html', {'datadir': datadir})
 
 
-def create_ensemble_index_page(env, datadir, ensemble):
+def create_ensemble_index_page(env, datadir, userdir, ensemble):
     """Create the top-level ensemble page.
 
     Parameters
@@ -900,6 +838,8 @@ def create_ensemble_index_page(env, datadir, ensemble):
     datadir : str
         The path to the directory containing the ensemble-level
         products.
+    userdir : str
+        The path to the directory containing the user's decisions.
     ensemble : str
         The ensemble id.
 
@@ -909,7 +849,7 @@ def create_ensemble_index_page(env, datadir, ensemble):
         The response status and HTML contents
     """
 
-    state = parse_ensembledir(datadir, ensemble)
+    state = read_ensemble_json(datadir, userdir, ensemble)
     if state is None:
         out = "<!DOCTYPE html><html><head><title>ERROR</title>"
         out += "</head><body><p>There was an error when processing "
@@ -963,7 +903,7 @@ def eqpos_to_dict(eqpos, nvertex):
 
 
 def create_master_hull_page(env,
-                            datadir, rawdir,
+                            datadir, userdir, rawdir,
                             ensemble, revision, masterid):
     """Create the review page for a master hull.
 
@@ -974,9 +914,13 @@ def create_master_hull_page(env,
 
     Parameters
     ----------
+    env
+        The Jinja2 environment.
     datadir : str
         The path to the directory containing the ensemble-level
         products.
+    userdir : str
+        The path to the directory containing the user's decisions.
     rawdir : str
         The path to the actual master hull data (fits and region files)
     ensemble : str
@@ -1000,7 +944,7 @@ def create_master_hull_page(env,
     mid = "{:03d}".format(masterid)
     revstr = "{:03d}".format(revision)
 
-    state = parse_ensembledir(datadir, ensemble)
+    state = read_ensemble_json(datadir, userdir, ensemble)
     if state is None:
         out = "<!DOCTYPE html><html><head><title>ERROR</title>"
         out += "</head><body><p>There was an error when processing "
@@ -1418,6 +1362,7 @@ class CHSHandler(BaseHTTPRequestHandler):
         #
         context = self.server.context
         datadir = context['datadir']
+        userdir = context['userdir']
         env = context['environment']
         upath = urlparse.urlparse(self.path)
         path = upath.path
@@ -1457,6 +1402,7 @@ class CHSHandler(BaseHTTPRequestHandler):
             if ntoks == 1:
                 status, cts = create_ensemble_index_page(env,
                                                          datadir,
+                                                         userdir,
                                                          ensemble)
                 self.write_contents(status, cts)
                 return
@@ -1474,6 +1420,7 @@ class CHSHandler(BaseHTTPRequestHandler):
                 # At the moment use the same data directory
                 status, cts = create_master_hull_page(env,
                                                       datadir,
+                                                      userdir,
                                                       datadir,
                                                       ensemble,
                                                       revision,
@@ -1577,12 +1524,13 @@ class CHSHandler(BaseHTTPRequestHandler):
 
         context = self.server.context
         datadir = context['datadir']
+        userdir = context['userdir']
         if path == '':
             self.send_error(404)
             return
 
         elif path == 'summary':
-            cts = get_data_summary(datadir)
+            cts = get_data_summary(datadir, userdir)
             self.send_as_json(cts)
             return
 
@@ -1598,18 +1546,19 @@ class CHSHandler(BaseHTTPRequestHandler):
             return
 
         if ntoks == 1:
-            cts = get_data_ensemble(datadir, ensemble)
+            cts = read_ensemble_json(datadir, userdir, ensemble)
             self.send_as_json(cts)
             return
+
+        # I DO NOT BELIEVE THIS PART OF THE CODE IS REACHED
+        errlog("UNEXPECTED CODE EXECUTION")
 
         try:
             masterid = int(toks[1])
         except ValueError:
             self.send_error(404)
 
-        # I DO NOT BELIEVE THIS PART OF THE CODE IS REACHED
-        errlog("UNEXPECTED CODE EXECUTION")
-        cts = get_data_master(datadir, ensemble, masterid)
+        cts = get_data_master(datadir, userdir, ensemble, masterid)
         self.send_as_json(cts)
 
     def get_regions(self, path):
@@ -1639,8 +1588,9 @@ class CHSHandler(BaseHTTPRequestHandler):
             self.send_error(404)
             return
 
-        regs = get_master_hull_regions(ensemble, masterid,
-                                       datadir, datadir)
+        userdir = self.server.context['userdir']
+        regs = get_data_master(datadir, userdir, datadir,
+                               ensemble, masterid)
         if regs is None:
             self.send_error(404)
             return None
@@ -1818,6 +1768,7 @@ if __name__ == "__main__":
     # within the data directory, to avois over-writing files.
     #
     cdir = os.path.commonprefix([datadir, userdir])
+
     def stripify(d):
         if d.endswith('/'):
             return d[:-1]
