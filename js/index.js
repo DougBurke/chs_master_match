@@ -45,6 +45,14 @@ function add_ensemble_row(parent, ens) {
   td.innerHTML = ens.nstacks.toString();
   tr.appendChild(td);
 
+  td = document.createElement("td");
+  if (ens.lastmodified.user === null) {
+    td.innerHTML = ens.lastmodified.proposed;
+  } else {
+    td.innerHTML = ens.lastmodified.user;
+  }
+  tr.appendChild(td);
+
   parent.appendChild(tr);
 }
 
