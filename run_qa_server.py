@@ -483,6 +483,74 @@ hmmm, the JSON data has {"status": "todo", "stackmap": {"acisfJ1705367m403832_00
     return store
 
 
+def read_ensemble_status(datadir, userdir, ensemble, revision):
+    """What is the ensemble status?
+
+    What is the current status of the ensemble? This is based on
+    read_ensemble_json.
+
+
+    Parameters
+    ----------
+    datadir : str
+        The path to the directory containing the ensemble-level
+        products. These are the "proposed" products.
+    userdir : str
+        The path to the directory containing the user's decisions.
+    ensemble : str
+        The ensemble.
+    revision : str
+        The revision value (in 3-digit form).
+
+    Returns
+    -------
+    status : {'todo', 'review', 'done'}
+
+    """
+
+    # Try the user and then proposed settings.
+    #
+    pat = "field.{}.v{}.json".format(ensemble, revision)
+
+    # pick an out-of-bounds value; normally I'd use None but
+    # this is a possible value, so use a numeric value.
+    #
+    not_present = -1
+
+    def lookin(indir):
+
+        infile = os.path.join(indir, ensemble, pat)
+        if not os.path.exists(infile):
+            return not_present
+
+        try:
+            jcts = read_json(infile)
+        except IOError:
+            return not_present
+
+        try:
+            return jcts['status']
+        except KeyError:
+            return not_present
+
+    ans = lookin(userdir)
+    if ans is not None and ans != not_present:
+        return ans
+
+    ans = lookin(datadir)
+    if ans is not None and ans != not_present:
+        return ans
+
+    if ans is None:
+        warn("status=None for ensemble " +
+             "{} version {}".format(ensemble, revision))
+        return "unknown"
+
+    errlog("no status for ensemble " +
+           "{} version {}".format(ensemble, revision))
+    return "unknown"
+
+
 def parse_datadir(datadir, userdir):
     """Extract useful information from the diretory.
 
@@ -1748,11 +1816,14 @@ class CHSHandler(BaseHTTPRequestHandler):
             errlog("Invalid master id: {}".format(toks[2]))
             self.send_error(404)
 
+        ensemble_status = read_ensemble_status(datadir, userdir,
+                                               ensemble, revision)
         cts = read_ensemble_hull_json(datadir, userdir,
                                       ensemble, masterid, revision)
         if cts is None:
             self.send_error(404)
         else:
+            cts['ensemble_status'] = ensemble_status
             self.send_as_json(cts)
 
     def get_regions(self, path):

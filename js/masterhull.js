@@ -863,9 +863,19 @@ function updatePage(json) {
     usernotes.value = state.usernotes.proposed;
   }
 
-  document.getElementById("saveusercontent")
-      .addEventListener("click",
-			(e) => { saveUserContent(); });
+  // Do we allow the user to change this?
+  // TODO: should also worry about the revision value
+  //
+  const saveusercontent = document.getElementById("saveusercontent");
+  if (state.ensemble_status === "todo") {
+      saveusercontent
+	  .addEventListener("click",
+			    (e) => { saveUserContent(); });
+  } else {
+      saveusercontent.disabled = true;
+      document.getElementById("usercontent")
+          .disabled = true;
+  }
 
   // Now for the user action button.
   //
@@ -895,8 +905,13 @@ function updatePage(json) {
   // set up the chosen value
   choice.value = ua;
 
-  choice.addEventListener("change",
-			  (e) => { saveUserChoice(e.target.value); });
+  if (state.ensemble_status === "todo") {
+      choice.addEventListener("change",
+			      (e) => { saveUserChoice(e.target.value); });
+  } else {
+      choice.disabled = true;
+  }
+
 }
 
 
