@@ -42,8 +42,7 @@
 
 {% for h in info['masters'] %}
 
- {# This check is not working #}
- {% if h['masterid_int'] == mid %}
+ {% if h['masterid'] == mid %}
   <span class='hulllink'>{{ h['masterid_int'] }}</span>
  {% else %}
   <a class='hulllink' href='/{{ ensemble }}/{{ revstr }}/{{ h['masterid'] }}'>{{ h['masterid_int'] }}</a>
