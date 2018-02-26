@@ -56,13 +56,12 @@ function updatePage(json) {
 }
 
 
-// Send a save message if the contents have changed.
-//
-function saveUserContent() {
-  const newval = document.getElementById('usercontent').value;
+function saveEnsemble(store) {
 
+  // Only send a message if the contents have changed
   const info = state.versions[latestRevision];
-  if (newval === info.usernotes.user) {
+  if ((store.usernotes === info.usernotes.user) &&
+      (store.status === info.status.user)) {
     return;
   }
 
@@ -80,7 +79,8 @@ function saveUserContent() {
 
   // Update the local state once the save has been made
   httpRequest.addEventListener("load", function() {
-    info.usernotes.user = newval;
+    info.usernotes.user = store.usernotes;
+    info.status.user = store.status;
   });
   httpRequest.addEventListener("error", function() {
       alert("Unable to save data!");
@@ -92,14 +92,55 @@ function saveUserContent() {
       spinner.stop();
   });
 
-  const store = {name: ensemble,
-		 revision: latestRevision,
-		 usernotes: newval};
   httpRequest.open('POST', '/save/ensemble');
   httpRequest.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
   httpRequest.send(JSON.stringify(store));
   
 }
+
+// Send a save message if the contents have changed.
+//
+function saveUserContent() {
+  const newval = document.getElementById('usercontent').value;
+
+  const info = state.versions[latestRevision];
+  if (newval === info.usernotes.user) {
+    return;
+  }
+
+  const store = {name: ensemble,
+		 revision: latestRevision,
+		 status: info.status.user,
+		 usernotes: newval};
+  saveEnsemble(store);
+}
+
+// Indicate that this ensemble has been processed: i.e. it has been
+// reviewed by this user and is ready for review by other QA-ers.
+//
+function saveStatus() {
+
+  // We should only be able to trigger this action if all the
+  // hulls have been reviewed by the user. Is it worth adding
+  // a check of this constraint here?
+  //
+  // Accepted status values are 'todo', 'review', and 'completed'.
+  // At present completed is not a choice.
+  //
+  const newval = 'review';
+
+  const info = state.versions[latestRevision];
+  if (newval === info.status.user) {
+    return;
+  }
+
+  const store = {name: ensemble,
+		 revision: latestRevision,
+		 status: newval,
+		 usernotes: info.usernotes.user};
+  saveEnsemble(store);
+}
+
 
 
 // Switch the display to the given version; minimal error checking
@@ -186,21 +227,39 @@ function setVersion(revision) {
   // Is this an actionable page or not?
   // a) are we the latest version
   // b) do all the hulls have a user action?
-  //
-  // const finish = document.getElementById('final');
+  // c) have we already made a decision?
+  //    This means that if you want to revert the "finished"
+  //    label we need to do it manually
+  // 
+  const final = document.getElementById('final');
+  const finish = document.getElementById('finish');
+  const finished = document.getElementById('finished');
   if (isLatest) {
-      /* for now just hide as unsure what to do
-    finish.style.display = 'block';
-    document.getElementById('finish')
-            .disabled = !all_hulls_have_useraction;
-      */
 
-    usersave.addEventListener("click",
-			      (e) => { saveUserContent(); });
+    final.style.display = 'block';
+
+    if ((info.status.user === null) || (info.status.user === "todo")) {
+	finished.style.display = 'none';
+
+	finish.disabled = !all_hulls_have_useraction;
+	finish.addEventListener("click",
+				(e) => { saveStatus(); });
+
+	usersave.addEventListener("click",
+				  (e) => { saveUserContent(); });
+
+
+    } else if (info.status.user === "review") {
+	usersave.disabled = true;
+	finish.style.display = 'none';
+
+    } else {
+	usersave.disabled = true;
+	finish.style.display = 'none';
+    }
 
   } else {
-      // finish.style.disply = 'none';
-
+    final.style.display = 'none';
     usersave.disabled = true;
   }
 }

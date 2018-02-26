@@ -45,6 +45,12 @@ function add_ensemble_row(parent, ens) {
   td.innerHTML = ens.nstacks.toString();
   tr.appendChild(td);
 
+  /***
+      At the moment the last-modified field only refers to
+      any ensemble-level changes (i.e. user comment)
+      and does not include changes made to each hull
+      so it is probably confusing
+
   td = document.createElement("td");
   if (ens.lastmodified.user === null) {
     td.innerHTML = ens.lastmodified.proposed;
@@ -52,6 +58,7 @@ function add_ensemble_row(parent, ens) {
     td.innerHTML = ens.lastmodified.user;
   }
   tr.appendChild(td);
+  ***/
 
   parent.appendChild(tr);
 }
@@ -128,20 +135,23 @@ function updatePage(json) {
     add_ensemble_row(parent, ens);
   }
 
-  parent = document.getElementById("review");
+  parent = document.getElementById("review-table-body");
   for (let i = 0; i < nreviews; i++) {
     let ens = json.reviews[i];
     add_ensemble_row(parent, ens);
   }
 
-  parent = document.getElementById("completed");
+  /*** not used at present
+  parent = document.getElementById("completed-table-body");
   for (let i = 0; i < ncompleted; i++) {
     let ens = json.completed[i];
     add_ensemble_row(parent, ens);
   }
+  ***/
 
   // initialise the data tables
   $('#todo-table').DataTable();
+  $('#review-table').DataTable();
 }
 
 const spinopts = {

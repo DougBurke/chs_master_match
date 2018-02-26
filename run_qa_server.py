@@ -375,8 +375,8 @@ def read_ensemble_json(datadir, userdir, ensemble):
            ['usernotes']
            ['lastmodified']
 
-    The usernotes, useraction, and lastmodified fields are dicts with
-    two keys:
+    The usernotes, useraction, lastmodified, and status fields are
+    dicts with two keys:
       proposed
       user
     which allows the user to "over ride" the proposed value.
@@ -435,9 +435,9 @@ hmmm, the JSON data has {"status": "todo", "stackmap": {"acisfJ1705367m403832_00
         jcts['masters'] = hulls
         store['versions'][v] = jcts
 
-        # Override the useraction and lastmodified values
+        # Override those keys that need proposed/user versions.
         #
-        for key in ['usernotes', 'lastmodified']:
+        for key in ['usernotes', 'lastmodified', 'status']:
             if not setup_user_setting(jcts, key):
                 return None
 
@@ -472,8 +472,13 @@ hmmm, the JSON data has {"status": "todo", "stackmap": {"acisfJ1705367m403832_00
                                                     revision))
             continue
 
-        for k in ['lastmodified', 'usernotes']:
-            base[k]['user'] = jcts[k]
+        for k in ['lastmodified', 'usernotes', 'status']:
+            try:
+                base[k]['user'] = jcts[k]
+            except KeyError:
+                # for now do not require the user to have all fields
+                # set.
+                pass
 
     return store
 
@@ -567,9 +572,9 @@ def get_data_summary(datadir, userdir):
            'usernotes': '',
            'lastmodified': ''}
     for ens in state:
-        if ens['status'] == 'completed':
+        if ens['status']['user'] == 'completed':
             key = 'completed'
-        elif ens['status'] == 'review':
+        elif ens['status']['user'] == 'review':
             key = 'reviews'
         else:
             key = 'todos'
@@ -933,6 +938,7 @@ def save_ensemble(userdir, data):
     store = {"name": ensemble,
              "lastmodified": time.asctime(),
              "usernotes": data['usernotes'],
+             "status": data['status'],
              "revision": version}
     with open(outfile, 'w') as fh:
         fh.write(json.dumps(store))
@@ -1633,16 +1639,11 @@ class CHSHandler(BaseHTTPRequestHandler):
         if path != "":
             path = path[1:]
 
-        if not path.startswith('save/'):
-            errlog("Unexpected POST path={}".format(path))
-            self.send_error(404)
-            return
-
-        # Until we handle other saves
         try:
             savefunc = {'save/summary': save_summary,
                         'save/ensemble': save_ensemble,
-                        'save/master': save_master}[path]
+                        'save/master': save_master
+                        }[path]
         except KeyError:
             errlog("Unexpected POST path={}".format(path))
             self.send_error(404)
