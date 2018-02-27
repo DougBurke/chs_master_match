@@ -230,11 +230,6 @@ function setupJS9(img, stack, winid) {
   }
 }
 
-// The layer argument was an attempt to allow shapes in different
-// layers, to better support interactivity, but it doesn't quite
-// work right as is and I have a (hopefully) working solution
-// for the interactivity.
-//
 function add_hull_to_js9(hull, opts, win, layer='regions') {
 
   // Need to convert to image coordinates
@@ -356,6 +351,11 @@ function addRegionsToJS9(img, stack, regions) {
               rotatable: false,
               resizable: false,
               tags: 'master'};
+
+  /* If this is a review page then don't let the user change the hull */
+  if (state.ensemble_status !== "todo") {
+    hullOpts.changeable = false;
+  }
 
   let ras = [];
   let decs = []
@@ -502,7 +502,6 @@ function js9_display_html(stack, stacknum, id) {
   html += "</div>";
   */
 
-  // TODO: this should only be added when there are PSFs 
   const psfs = settings.regionstore.stackpsfs[stack];
   if (typeof psfs !== "undefined") {
       html += "<div class='reload'>";
@@ -783,12 +782,6 @@ function broadcastMasterDelete(img, action) {
 
 }
 
-if (JS9.Regions.opts.onchange !== null) {
-  alert("Overwriting onchange handler!");
-}
-
-JS9.Regions.opts.onchange = handleRegionChange;
-
 // Save user selections
 //
 function saveUser(store, field, newval) {
@@ -900,6 +893,14 @@ function updatePage(json) {
 
   state = Object.assign({}, json);
 
+  // Do we need a handler for region changes?
+  if (state.ensemble_status === "todo") {
+    if (JS9.Regions.opts.onchange !== null) {
+      alert("Overwriting onchange handler!");
+    }
+    JS9.Regions.opts.onchange = handleRegionChange;
+  }
+
   document.getElementById('imgscale').
     addEventListener("change", (e) => { setScaling(e.target.value); });
 
@@ -992,7 +993,6 @@ const spinopts = {
 function initialize(opts) {
 
   settings = Object.assign({}, opts);
-
 
   /*** For the moment comment out the samp code, as the
        continual checking is making some unrelated
