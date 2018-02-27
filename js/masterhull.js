@@ -288,7 +288,7 @@ function addPSFRegions(stack, win) {
 
 function togglePSFs(stack, winid) {
   const flag = !psfState[stack];
-  JS9.ShowShapeLayer(psfLayer, flag, winid);  // TODO: is this the correct window?
+  JS9.ShowShapeLayer(psfLayer, flag, {display: winid});
   psfState[stack] = flag;
   let label = " PSFs";
   if (flag) { label = "Hide" + label; } else { label = "Show" + label; }
