@@ -95,6 +95,7 @@ function finalizeJS9Display(stack, winid) {
   };
 }
 
+//   - psf        for PSF ellipses
 //   - stack      for stack-level hulls
 //   - original   the input 'master-level' hulls
 //   - convex     the convex hull calculated from the current hull
@@ -105,6 +106,7 @@ function finalizeJS9Display(stack, winid) {
 // directly). For now we use the "standard" regions layer
 // for this
 //
+const psfLayer = 'psf';
 const stackLayer = 'stack';
 const convexLayer = 'convex';
 const originalLayer = 'original';
@@ -172,17 +174,27 @@ function setupJS9(img, stack, winid) {
   // (an alternative would be to just cache the data and re-use
   // it).
   //
-  document.getElementById(winid + 'ReloadRegions')
-    .addEventListener("click", (e) => {
-      JS9.RemoveRegions("all", opts);
-      $.ajax({url: '/regions/ensemble/' +
-		  settings.ensemble + '/' +
-		  settings.masterid.toString(),
-              dataType: 'json'})
-       .done((data, textStatus) => {
-         addRegionToJS9(img, stack, winid, data);
-       });
-    });
+  const reloadButton = document.getElementById(winid + 'ReloadRegions');
+  if (reloadButton !== null) {
+      // TODO: fix this (i.e. to match the latest behavior)
+      reloadButton
+	  .addEventListener("click", (e) => {
+		  JS9.RemoveRegions("all", opts);
+		  $.ajax({url: '/regions/ensemble/' +
+			      settings.ensemble + '/' +
+			      settings.masterid.toString(),
+			      dataType: 'json'})
+		  .done((data, textStatus) => {
+			  addRegionToJS9(img, stack, winid, data);
+		      });
+	      });
+  }
+
+  const toggleButton = document.getElementById(winid + 'TogglePSFs');
+  if (toggleButton !== null) {
+      toggleButton
+	  .addEventListener("click", (e) => { togglePSFs(stack, winid); });
+  }
 
   container.getElementsByClassName("zoomin")[0]
      .addEventListener("click", (e) => { JS9.SetZoom("in", opts); });
@@ -213,7 +225,7 @@ function setupJS9(img, stack, winid) {
   //
   // layerOpts.dowcsstr = true;
 
-  for (let name of [stackLayer, originalLayer, convexLayer]) {
+  for (let name of [psfLayer, stackLayer, originalLayer, convexLayer]) {
     JS9.NewShapeLayer(name, layerOpts, opts);
   }
 }
@@ -242,7 +254,50 @@ function add_hull_to_js9(hull, opts, win, layer='regions') {
 }
 
 
+// Are the PSFs being shown or hidden for a stack?
+var psfState = {};
+
+function addPSFRegions(stack, win) {
+  const psfs = settings.regionstore.stackpsfs[stack];
+  if (typeof psfs === "undefined") {
+    return;
+  }
+
+  const psfOpts = {color: 'yellow',
+		   changeable: false,
+		   tags: 'psf'};
+
+  // Let JS9 deal with the WCS conversion rather than doing it
+  // here. My guess is that the region-parsing that JS9 does is
+  // going to be as efficient as me doing it manually (or at least
+  // not significantly different in terms of the runtime).
+  //
+  for (let psf of psfs) {
+
+    const shape = 'fk5; ellipse(' + psf.ra.toString() + ',' + 
+	psf.dec.toString() + ',' +
+        psf.r0.toString() + '",' +
+        psf.r1.toString() + '",' +
+        psf.angle.toString() + ')';
+
+    JS9.AddShapes(psfLayer, shape, psfOpts, win);
+  }
+
+  psfState[stack] = true;
+}
+
+function togglePSFs(stack, winid) {
+  const flag = !psfState[stack];
+  JS9.ShowShapeLayer(psfLayer, flag, winid);  // TODO: is this the correct window?
+  psfState[stack] = flag;
+  let label = " PSFs";
+  if (flag) { label = "Hide" + label; } else { label = "Show" + label; }
+  document.getElementById(winid + 'TogglePSFs').innerHTML = label;
+}
+
 // Add the stack-level and master hull(s) to the JS9 window.
+//
+// The PSF regions are drawn first (if available).
 //
 // Stack level hulls are drawn first (maybe in a different layer?)
 //
@@ -255,6 +310,8 @@ function addRegionsToJS9(img, stack, regions) {
   }
 
   let display = {display: img};
+
+  addPSFRegions(stack, display);
 
   let linestyle = [1];
   let hullOpts = {color: 'orange',
@@ -438,10 +495,21 @@ function js9_display_html(stack, stacknum, id) {
   }
   html += "</div>";
 
+  /* hide for now
   html += "<div class='reload'>";
   html += "<button id='" + id;
   html += "ReloadRegions'>Reload Regions</button>";
   html += "</div>";
+  */
+
+  // TODO: this should only be added when there are PSFs 
+  const psfs = settings.regionstore.stackpsfs[stack];
+  if (typeof psfs !== "undefined") {
+      html += "<div class='reload'>";
+      html += "<button id='" + id;
+      html += "TogglePSFs'>Hide PSFs</button>";
+      html += "</div>";
+  }
 
   const all_bins = [1, 2, 4, 8, 16, 32, 64, 128];
   let def_binsize, def_start;

@@ -148,6 +148,8 @@ class CHSServer(HTTPServer):
                   master-match pipeline)
        evt3dir  - the location of the stack event files
        userdir  - the location for storing user information
+       xmdatdir - the location of the xmdat files (stored in subdirectories
+                  labelled by the stack name).
        webdir   - the location of the web assets
        environment - the Jinja2 environment
 
@@ -156,7 +158,8 @@ class CHSServer(HTTPServer):
 
     def __init__(self, store, *args, **kwargs):
         context = {}
-        for k in ['datadir', 'evt3dir', 'userdir', 'webdir']:
+        for k in ['datadir', 'evt3dir', 'userdir', 'xmdatdir',
+                  'webdir']:
             try:
                 d = store[k]
             except KeyError:
@@ -1165,7 +1168,7 @@ def eqpos_to_dict(eqpos, nvertex):
 
 
 def create_master_hull_page(env,
-                            datadir, userdir, rawdir,
+                            datadir, userdir, rawdir, xmdatdir,
                             ensemble, revision, masterid):
     """Create the review page for a master hull.
 
@@ -1185,6 +1188,9 @@ def create_master_hull_page(env,
         The path to the directory containing the user's decisions.
     rawdir : str
         The path to the actual master hull data (fits and region files)
+    xmdatdir : str
+        The path to the xmdat directory (the files are stored in
+        sub-directories labelled by the stack name).
     ensemble : str
         The ensemble id.
     revision : int
@@ -1506,12 +1512,48 @@ def create_master_hull_page(env,
 
         store.append(shull)
 
+    # What are the point-source regions for the stacks?
+    #
+    psfs = {}
+    for stk in stks:
+        # hard code the name
+        infile = os.path.join(xmdatdir, stk,
+                              '{}N000_xmdat3.fits'.format(stk))
+
+        # No VFS in the file name so can do an existence check
+        if not os.path.exists(infile):
+            continue
+
+        try:
+            cr = pycrates.read_file(infile)
+        except IOError:
+            errlog("Unable to open xmdat file: {}".format(infile))
+            continue
+
+        # ra,dec in decmal degrees
+        # r0,r1 in arcsec
+        # ang in degrees
+        #
+        psfs[stk] = []
+        for ra, dec, r0, r1, ang in zip(cr.ra.values,
+                                        cr.dec.values,
+                                        cr.psf_r0.values,
+                                        cr.psf_r1.values,
+                                        cr.psf_ang.values):
+            psfs[stk].append({'ra': ra, 'dec': dec,
+                              'r0': r0, 'r1': r1, 'angle': ang})
+
+        cr = None
+
     # Ensure data needed by the templates is present (this should
     # be cleaned up)
     #
     for h in info['masters']:
         h['masterid_int'] = int(h['masterid'])
 
+    # A lot of this data could be accessed via AJAX from the page
+    # setup code, but leave as is for now.
+    #
     return apply_template(env, 'masterhull.html',
                           {'ensemble': ensemble,
                            'revstr': revstr,
@@ -1523,12 +1565,10 @@ def create_master_hull_page(env,
                            'hull': hull,
                            'is_latest': is_latest,
                            'ordered_stacks': ordered_stks,
-                           # 'stack_band': json.dumps(stack_band),
-                           # 'hull_store': json.dumps(hull_store),
-                           # 'stack_polys': json.dumps(stack_polys),
                            'stack_band': stack_band,
                            'hull_store': hull_store,
                            'stack_polys': stack_polys,
+                           'stack_psfs': psfs,
                            'username': os.getlogin()})
 
 
@@ -1680,10 +1720,12 @@ class CHSHandler(BaseHTTPRequestHandler):
                     return
 
                 # At the moment use the same data directory
+                xmdatdir = context['xmdatdir']
                 status, cts = create_master_hull_page(env,
                                                       datadir,
                                                       userdir,
                                                       datadir,
+                                                      xmdatdir,
                                                       ensemble,
                                                       revision,
                                                       masterid)
@@ -1971,9 +2013,11 @@ class CHSHandler(BaseHTTPRequestHandler):
 
 def serve(userdir, webdir, datadir, templatedir,
           port=8070,
+          xmdatdir='/data/L3/chs_master_match/input/xmdat3',
           evt3dir='/data/L3/chs_master_match/input/stkevt3'):
 
-    for dirname in [userdir, webdir, datadir, evt3dir, templatedir]:
+    for dirname in [userdir, webdir, datadir, evt3dir, xmdatdir,
+                    templatedir]:
         if not os.path.isdir(dirname):
             raise IOError("Not a directory: {}".format(dirname))
 
@@ -1984,6 +2028,7 @@ def serve(userdir, webdir, datadir, templatedir,
              'webdir': webdir,
              'datadir': datadir,
              'evt3dir': evt3dir,
+             'xmdatdir': xmdatdir,
              'environment': env}
 
     server_address = ('', port)
