@@ -3,8 +3,7 @@
 """
 Usage:
 
-  ./chs_create_initial_masters.py ensemble outdir
-      --ensemblefile <ensfile>
+  ./chs_create_initial_masters.py ensemblefile ensemble outdir
       --mrgsrc3dir <dirname>
 
 Aim:
@@ -13,12 +12,12 @@ Create the initial merged-hull table for the Convex-Hull Master match
 of an ensemble. The output directory (outdir) must not exist when the
 script is run.
 
-The ensfile argument is a file containing the mapping from ensemble
-to stack. It should be readable by crates and contain the columns
-ensemble and stack. It is expected to be the file created by
-get_ensemble_to_stack_mapping.py. An alternative approach would be
-to read in the ensemble mst3 file, which would give the ensemble name
-and the stack ids.
+The ensemblefilefile argument is a file containing the mapping from
+ensemble to stack. It should be readable by crates and contain the
+columns ensemble and stack. It is expected to be the file created by
+get_ensemble_to_stack_mapping.py. An alternative approach would be to
+read in the ensemble mst3 file, which would give the ensemble name and
+the stack ids.
 
 If there are no hulls in the ensemble then the file outdir/NOHULLS
 is created (it is an error if this file already exists) and the script
@@ -73,7 +72,6 @@ import chs_identify_master_hulls as identify
 import chs_merge_hulls as merge
 
 NODATAFILE = "NOHULLS"
-ENSEMBLEFILE = "ensemble_to_stack.2017.12.13.txt"
 
 help_str = "Create the review products for CHS in this ensemble."
 
@@ -690,7 +688,7 @@ def write_stack_hull_as_ds9(hull, outdir, revision, color='green'):
         ofh.write(ostr)
 
 
-def process_ensemble(ensemble, outdir, ensemblefile,
+def process_ensemble(ensemblefile, ensemble, outdir,
                      mrgsrc3dir,
                      revision=1,
                      creator=None,
@@ -701,13 +699,13 @@ def process_ensemble(ensemble, outdir, ensemblefile,
 
     Parameters
     ----------
-    emsemble : str
-        The ensemble name.
-    outdir : str
-        The output directory, which will be created by the routine.
     ensemblefile : str
         The file should contain columns ensemble and stack, and is
         used to find what stacks to look for.
+    ensemble : str
+        The ensemble name.
+    outdir : str
+        The output directory, which will be created by the routine.
     mrgsrc3dir : str
         The directory name containing the mrgsrc3 files for the
         stacks. The names must match
@@ -857,21 +855,19 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=help_str,
                                      prog=sys.argv[0])
 
+    parser.add_argument("ensemblefile",
+                        help="The ensemble to stack mapping")
     parser.add_argument("ensemble", type=str,
                         help="The ensemble to process")
     parser.add_argument("outdir", type=str,
                         help="The output directory (must not exist)")
 
-    parser.add_argument("--ensemblefile",
-                        default=ENSEMBLEFILE,
-                        help="The ensemble to stack mapping: default %(default)s")
     parser.add_argument("--mrgsrc3dir",
                         default="/data/L3/chs_master_match/input/mrgsrc3",
                         help="The mrgsrc3 directory: default %(default)s")
 
     args = parser.parse_args(sys.argv[1:])
 
-    process_ensemble(args.ensemble, args.outdir,
-                     ensemblefile=args.ensemblefile,
+    process_ensemble(args.ensemblefile, args.ensemble, args.outdir,
                      mrgsrc3dir=args.mrgsrc3dir,
                      creator=sys.argv[0])

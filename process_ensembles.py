@@ -92,11 +92,12 @@ def doit(ensemblestk, stackmapfile, outdir):
         # diagnostics of any error, which is not ideal.
         #
         try:
-            out = check_output(['python', toolname, ensname, dirname,
-                                '--ensemblefile={}'.format(stackmapfile)],
+            out = check_output(['python', toolname, stackmapfile,
+                                ensname, dirname],
                                stderr=STDOUT)
         except CalledProcessError as exc:
-            out = "ERROR: ensemble={}\n{}\n".format(ensname, exc)
+            out = "ERROR: ensemble={}\n{}\n".format(ensname, exc) + \
+                "\n" + exc.output
             sys.stdout.write("    FAILED\n")
             sys.stdout.flush()
             failed.append(ensname)
