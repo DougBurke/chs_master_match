@@ -369,16 +369,16 @@ def read_master_hulls(chsfile):
 
     Returns
     -------
-    srcmatch, srclist, metadata : dict, dict, dict
-        The contents of the SRCMATCH and SRCLIST block, and metadata
+    hullmatch, hulllist, metadata : dict, dict, dict
+        The contents of the HULLMATCH and HULLLIST block, and metadata
         about the file (e.g. ensemble and CHSVER value). The
-        srcmatch and srclist dicts have keys of Master_Id.
+        hullmatch and hulllist dicts have keys of Master_Id.
     """
 
     ds = pycrates.CrateDataset(chsfile, mode='r')
 
-    cr = ds.get_crate('SRCMATCH')
-    srcmatch = {}
+    cr = ds.get_crate('HULLMATCH')
+    hullmatch = {}
 
     # Map from stack id to the "number" of the stack in the ensemble
     ensemblemap = {}
@@ -398,28 +398,28 @@ def read_master_hulls(chsfile):
                  'component': component,
                  'match_type': mtype}
         try:
-            srcmatch[mid].append(store)
+            hullmatch[mid].append(store)
         except KeyError:
-            srcmatch[mid] = [store]
+            hullmatch[mid] = [store]
 
-    cr = ds.get_crate('SRCLIST')
+    cr = ds.get_crate('HULLLIST')
 
-    srclist = {}
+    hulllist = {}
     zs = zip(cr.Master_Id.values,
              cr.STATUS.values,
              cr.BASE_STK.values,
              cr.NVERTEX.values,
              cr.EQPOS.values)
     for mid, status, base_stk, nvertex, eqpos in zs:
-        assert mid not in srclist
+        assert mid not in hulllist
 
-        srclist[mid] = {'master_id': mid,
-                        'status': status,
-                        'base_stk': base_stk,
-                        'eqpos': eqpos[:, :nvertex]}
+        hulllist[mid] = {'master_id': mid,
+                         'status': status,
+                         'base_stk': base_stk,
+                         'eqpos': eqpos[:, :nvertex]}
 
     metadata = {'ensemble': cr.get_key_value('ENSEMBLE'),
                 'ensemblemap': ensemblemap,
                 'revision': cr.get_key_value('CHSVER')}
 
-    return srcmatch, srclist, metadata
+    return hullmatch, hulllist, metadata

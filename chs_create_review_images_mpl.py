@@ -113,7 +113,7 @@ def create_review_products(chsfile, outdir,
 
     chsdir = os.path.dirname(chsfile)
 
-    srcmatch, srclist, metadata = utils.read_master_hulls(chsfile)
+    hullmatch, hulllist, metadata = utils.read_master_hulls(chsfile)
 
     ensemble = metadata['ensemble']
     ensemblemap = metadata['ensemblemap']
@@ -124,7 +124,7 @@ def create_review_products(chsfile, outdir,
 
     # ncpts is the number of stack hulls in the ensemble
     ncpts = 0
-    for stkhulls in srcmatch.values():
+    for stkhulls in hullmatch.values():
         for stkhull in stkhulls:
             stacks.add(stkhull['stack'])
             ncpts += 1
@@ -152,7 +152,7 @@ def create_review_products(chsfile, outdir,
                for s, m in zip(stacks, mrgsrc3files)}
 
     hulls = [hullmap[s] for s in stacks]
-    plots.draw_ensemble_outline(ensemble, srclist, hulls, fov3files)
+    plots.draw_ensemble_outline(ensemble, hulllist, hulls, fov3files)
 
     filename = 'field.{}.v{:03d}.png'.format(ensemble, revision)
     outfile = os.path.join(outdir, filename)
@@ -160,7 +160,7 @@ def create_review_products(chsfile, outdir,
     plt.savefig(outfile)
     print("Created: {}".format(outfile))
 
-    mids = sorted(srclist.keys())
+    mids = sorted(hulllist.keys())
 
     # Create the ensemble JSON file
     #
@@ -184,7 +184,7 @@ def create_review_products(chsfile, outdir,
     #
     for mid in mids:
 
-        src = srclist[mid]
+        src = hulllist[mid]
         if src['status'] == 'qa':
             qahulls = read_qa_hulls(chsdir, revision,
                                     src['master_id'])
@@ -195,7 +195,7 @@ def create_review_products(chsfile, outdir,
         # but not worth the complexity of avoiding this
         for evtscale in ['log10', 'sqrt', 'none']:
             pinfo = plots.draw_hulls_and_images(src,
-                                                srcmatch[mid],
+                                                hullmatch[mid],
                                                 hullmap,
                                                 stkevt3dir,
                                                 outdir,
@@ -213,7 +213,7 @@ def create_review_products(chsfile, outdir,
         ensdata = {'ensemble': ensemble,
                    'masterid': "{:03d}".format(mid),
                    'revision': "{:03d}".format(revision),
-                   'ncpts': len(srcmatch[mid]),
+                   'ncpts': len(hullmatch[mid]),
                    'npages': pinfo['npages'],
                    'useraction': action,
                    'lastmodified': '',  # could add date string here

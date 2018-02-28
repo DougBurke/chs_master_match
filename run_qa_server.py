@@ -783,6 +783,8 @@ def find_master_center(infile, masterid):
 
     """
 
+    """ Would like to do the following but need to allow for
+        HULLLIST or SRCLIST block names
     fname = "{}[SRCLIST][Master_Id={}]".format(infile, masterid)
     cr = pycrates.read_file(fname)
     nrows = cr.get_nrows()
@@ -793,14 +795,49 @@ def find_master_center(infile, masterid):
     elif nrows > 1:
         errlog("multiple rows matching {}".format(fname))
         return None
+    """
 
-    # NOTE: QA cases have NVERTEX=0
-    nv = cr.NVERTEX.values[0]
-    if nv < 3:
-        errlog("nvertex={} for {}".format(nv, fname))
+    ds = pycrates.CrateDataset(infile, mode='r')
+    cr = None
+    for blname in ['HULL', 'SRC']:
+        try:
+            cr = ds.get_crate(blname + 'LIST')
+        except IndexError:
+            pass
+
+    if cr is None:
+        errlog("Unable to find HULL/SRCLIST in {}".format(infile))
         return None
 
-    eqpos = cr.EQPOS.values[0, :, :nv]
+    try:
+        col = cr.get_column('Master_id')
+    except ValueError:
+        errlog("No Master_Id column in " +
+               "{}[{}]".format(infile, cr.name))
+        return None
+
+    idx, = np.where(col.values == masterid)
+    nrows = len(idx)
+    if nrows == 0:
+        errlog("no master_id={} in {}".format(masterid,
+                                              infile))
+        return None
+
+    elif nrows > 1:
+        errlog("multiple rows matching master_id=" +
+               "{} in {}".format(masterid, infile))
+        return None
+
+    pos = idx[0]
+
+    # NOTE: QA cases have NVERTEX=0
+    nv = cr.NVERTEX.values[pos]
+    if nv < 3:
+        errlog("nvertex={} for master_id={} {}".format(nv, masterid,
+                                                       infile))
+        return None
+
+    eqpos = cr.EQPOS.values[pos, :, :nv]
     ra_mid = (eqpos[0].min() + eqpos[0].max()) / 2.0
     dec_mid = (eqpos[1].min() + eqpos[1].max()) / 2.0
     return ra_mid, dec_mid
@@ -1270,15 +1307,19 @@ def create_master_hull_page(env,
 
     # From the hull file,
     #
-    # *) SRCMATCH block
+    # *) HULLMATCH block or SRCMATCH block
     #
     # find those stacks associated with a master source, and the
     # energy band.
     #
-    # *) SRCLIST block
+    # *) HULLLIST block or SRCLIST block
     #
     # find the state of each master hull and, where possible,
     # read in the vertices.
+    #
+    # The HULLxxx variants are tried first, and then fall back to the
+    # SRCxxx versions if they are not found (they should be HULLxxx
+    # but to support testing want to allow SRCxxx versions).
     #
     try:
         ds = pycrates.CrateDataset(hullfile, mode='r')
@@ -1291,14 +1332,18 @@ def create_master_hull_page(env,
         return 404, out
 
     try:
-        cr = ds.get_crate('SRCMATCH')
-    except IndexError as exc:
-        errlog("unable to read SRCMATCH from hullfile {} - {}".format(hullfile, exc))
-        out = "<!DOCTYPE html><html><head><title>INTERNAL ERROR</title>"
-        out += "</head><body><p>Error reading SRCMATCH block of "
-        out += "hullfile={}\nreason=\n{}".format(hullfile, exc)
-        out += + "- see Doug!</p></body></html>"
-        return 404, out
+        cr = ds.get_crate('HULLMATCH')
+    except IndexError:
+        try:
+            cr = ds.get_crate('SRCMATCH')
+        except IndexError as exc:
+            errlog("unable to read HULL/SRCMATCH from " +
+                   "hullfile {} - {}".format(hullfile, exc))
+            out = "<!DOCTYPE html><html><head><title>INTERNAL ERROR</title>"
+            out += "</head><body><p>Error reading HULL/SRCMATCH block of "
+            out += "hullfile={}\nreason=\n{}".format(hullfile, exc)
+            out += + "- see Doug!</p></body></html>"
+            return 404, out
 
     # We have aleady got this information, but recreate it
     #
@@ -1368,14 +1413,18 @@ def create_master_hull_page(env,
     cr = None
 
     try:
-        cr = ds.get_crate('SRCLIST')
-    except IndexError as exc:
-        errlog("unable to read SRCLIST from hullfile {} - {}".format(hullfile, exc))
-        out = "<!DOCTYPE html><html><head><title>INTERNAL ERROR</title>"
-        out += "</head><body><p>Error reading SRCLIST block of "
-        out += "hullfile={}\nreason=\n{}".format(hullfile, exc)
-        out += + "- see Doug!</p></body></html>"
-        return 404, out
+        cr = ds.get_crate('HULLLIST')
+    except IndexError:
+        try:
+            cr = ds.get_crate('SRCLIST')
+        except IndexError as exc:
+            errlog("unable to read HULL/SRCLIST from " +
+                   "hullfile {} - {}".format(hullfile, exc))
+            out = "<!DOCTYPE html><html><head><title>INTERNAL ERROR</title>"
+            out += "</head><body><p>Error reading SRCLIST block of "
+            out += "hullfile={}\nreason=\n{}".format(hullfile, exc)
+            out += + "- see Doug!</p></body></html>"
+            return 404, out
 
     for itervals in zip(cr.Master_Id.values,
                         cr.STATUS.values,

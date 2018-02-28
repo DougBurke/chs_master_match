@@ -351,7 +351,7 @@ def write_hulls(ensemble, outfile, hullcpts, hullareas, outlines,
     ds = pycrates.CrateDataset()
 
     cr = pycrates.TABLECrate()
-    cr.name = 'SRCMATCH'
+    cr.name = 'HULLMATCH'
 
     add_standard_header(cr, creator=creator, revision=revision)
     add_header(cr, extra_hdr)
@@ -384,7 +384,7 @@ def write_hulls(ensemble, outfile, hullcpts, hullareas, outlines,
             areas.append(hullareas[key])
             ebands.append(hull_store[key]['eband'])
 
-            # would liek to keep as a bit array
+            # would like to keep as a bit array
             mancodes.append(hull_store[key]['man_code'])
 
     # NOTE: the NHULLS column might be better in the next block,
@@ -409,7 +409,7 @@ def write_hulls(ensemble, outfile, hullcpts, hullareas, outlines,
     ds.add_crate(cr)
 
     cr = pycrates.TABLECrate()
-    cr.name = 'SRCLIST'
+    cr.name = 'HULLLIST'
 
     add_standard_header(cr, creator=creator, revision=revision)
     add_header(cr, extra_hdr)
