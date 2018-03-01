@@ -654,15 +654,19 @@ def get_data_summary(datadir, userdir):
 
     # Has the user saved any notes?
     infile = os.path.join(userdir, 'summary.json')
-    if not os.path.isfile(infile):
-        return out
+    if os.path.isfile(infile):
+        jcts = read_json(infile)
+        if jcts is not None:
+            out['usernotes'] = jcts['usernotes']
+            out['lastmodified'] = jcts['lastmodified']
 
-    jcts = read_json(infile)
-    if jcts is None:
-        return out
+    # How about the datatable settings?
+    infile = os.path.join(userdir, 'datatable.json')
+    if os.path.isfile(infile):
+        jcts = read_json(infile)
+        if jcts is not None:
+            out['datatable'] = jcts
 
-    out['usernotes'] = jcts['usernotes']
-    out['lastmodified'] = jcts['lastmodified']
     return out
 
 
@@ -997,6 +1001,27 @@ def get_data_master(datadir, userdir, rawdir, ensemble, masterid):
                               'dec': sdec,
                               'regstr': regstr})
     return out
+
+
+def save_datatable(userdir, data):
+    """Save the data table details.
+
+    This could be included in the summary page, but for now
+    separate it out.
+
+    Parameters
+    ----------
+    userdir : str
+        The location for the user-stored data.
+    data : dict
+        The JSON dictionary containing the elements to write out.
+    """
+
+    outname = 'datatable.json'
+    outfile = os.path.join(userdir, outname)
+
+    with open(outfile, 'w') as fh:
+        fh.write(json.dumps(data))
 
 
 def save_summary(userdir, data):
@@ -1801,7 +1826,8 @@ class CHSHandler(BaseHTTPRequestHandler):
         try:
             savefunc = {'save/summary': save_summary,
                         'save/ensemble': save_ensemble,
-                        'save/master': save_master
+                        'save/master': save_master,
+                        'save/datatable': save_datatable
                         }[path]
         except KeyError:
             errlog("Unexpected POST path={}".format(path))

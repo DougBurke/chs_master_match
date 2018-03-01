@@ -6,6 +6,10 @@
 
 var usernotes = "";
 
+var datatable_todo = undefined;
+var datatable_review = undefined;
+
+
 function plural(x) { if (x === 1) { return ""; } else { return "s"; } }
 
 function nens(n) { return n.toString() + " ensemble" + plural(n); }
@@ -105,6 +109,44 @@ function saveUserContent() {
   
 }
 
+// For now this means that the display length of one of the tables
+// has been changed. Could also store current page number.
+//
+function saveDatatableSettings() {
+
+  let httpRequest = new XMLHttpRequest();
+  if (!httpRequest) {
+      alert("Unable to create a XMLHttpRequest!");
+      return;
+  }
+
+  // Add the spinner to the whole page
+  //
+  let body = document.getElementsByTagName("body")[0];
+  let spinner = new Spinner(spinopts);
+  spinner.spin(body);
+
+  // Update the local state once the save has been made
+  httpRequest.addEventListener("load", function() {
+  });
+  httpRequest.addEventListener("error", function() {
+      alert("Unable to save data!");
+  });
+  httpRequest.addEventListener("abort", function() {
+      alert("Unable to save data!");
+  });
+  httpRequest.addEventListener("loadend", function() {
+      spinner.stop();
+  });
+
+  const store = {length: {todo: datatable_todo.page.len(),
+			  review: datatable_review.page.len()}};
+  httpRequest.open('POST', '/save/datatable');
+  httpRequest.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+  httpRequest.send(JSON.stringify(store));
+  
+}
+
 function updatePage(json) {
 
   document.getElementById("usercontent").value = json.usernotes;
@@ -150,8 +192,25 @@ function updatePage(json) {
   ***/
 
   // initialise the data tables
-  $('#todo-table').DataTable();
-  $('#review-table').DataTable();
+  datatable_todo = $('#todo-table').DataTable();
+  datatable_review = $('#review-table').DataTable();
+
+  if (json.datatable && json.datatable.length) {
+      if (json.datatable.length.todo) {
+	datatable_todo.page.len(json.datatable.length.todo).draw();
+      }
+      if (json.datatable.length.review) {
+	datatable_review.page.len(json.datatable.length.review).draw();
+      }
+  }
+
+  // Only set up the handler after setting the page length!
+  datatable_todo.on('length', () => {
+    saveDatatableSettings();
+  }); 
+  datatable_review.on('length', () => {
+    saveDatatableSettings();
+  }); 
 }
 
 const spinopts = {
