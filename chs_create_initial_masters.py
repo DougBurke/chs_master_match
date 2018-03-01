@@ -5,6 +5,7 @@ Usage:
 
   ./chs_create_initial_masters.py ensemblefile ensemble outdir
       --mrgsrc3dir <dirname>
+      --compzero n
 
 Aim:
 
@@ -22,6 +23,12 @@ the stack ids.
 If there are no hulls in the ensemble then the file outdir/NOHULLS
 is created (it is an error if this file already exists) and the script
 exits with a status of 0.
+
+The compzero value is added to the component numbers of the stack-level
+hulls to create the COMPONENT column of the HULLMATCH block. It is
+added as the COMPZERO keyword to the header, and defaults to 9000 when
+not given. It refers to the COMPONENT value of a stack-level hull
+with a zero component value (they are 1-based).
 
 If there are any hulls then the following file is created in the
 directory outdir:
@@ -302,6 +309,7 @@ def add_col(cr, name, values,
 def write_hulls(ensemble, outfile, hullcpts, hullareas, outlines,
                 hull_store,
                 stacks=None,
+                compzero=9000,
                 revision=1,
                 creator=None):
     """Create the "CHS mst3" file.
@@ -327,6 +335,11 @@ def write_hulls(ensemble, outfile, hullcpts, hullareas, outlines,
         The stacks that form this ensemble (whether or not they
         have a stack-level convex hull). If given then the
         output file will contain STKIDNUM and STKIDxxx values.
+    compzero : int, optional
+        The value of the COMPONENT column in the HULLMATCH block
+        for a stack-level hull which has a component value of 0
+        (from the mrgsrc3 MEXTSRC block); note that there are no
+        such component values since they are 1 based. Must be >= 0.
     revision : int
         The value to write out to the header as the CHSVER
         keyword.
@@ -337,7 +350,8 @@ def write_hulls(ensemble, outfile, hullcpts, hullareas, outlines,
     assert len(hullcpts) == len(outlines), \
         'len = {} vs {}'.format(len(hullcpts), len(outlines))
 
-    extra_hdr = [('ENSEMBLE', ensemble, 'The ensemble')]
+    extra_hdr = [('ENSEMBLE', ensemble, 'The ensemble'),
+                 ('COMPZERO', compzero, 'The COMPONENT value for cpt=0')]
     if stacks is not None:
         stacks = sorted(list(stacks))
         for i, stack in enumerate(stacks):
@@ -379,7 +393,7 @@ def write_hulls(ensemble, outfile, hullcpts, hullareas, outlines,
             mid.append(m)
             nhulls.append(nh)
             stks.append(stack)
-            cpts.append(cpt)
+            cpts.append(cpt + compzero)
             mtypes.append('Unambiguous')
             areas.append(hullareas[key])
             ebands.append(hull_store[key]['eband'])
@@ -396,11 +410,12 @@ def write_hulls(ensemble, outfile, hullcpts, hullareas, outlines,
     add_col(cr, 'NHULLS', nhulls,
             desc='The number of stack-level hulls in the master')
     add_col(cr, 'STACKID', stks)
-    add_col(cr, 'COMPONENT', cpts)
+    add_col(cr, 'COMPONENT', cpts,
+            desc='Offset by COMPZERO from MEXTSRC component value')
     add_col(cr, 'Match_Type', mtypes)
     add_col(cr, 'AREA', areas,
             unit='arcsec**2',
-            desc='Area of hull excluding mask filter')
+            desc='Area of hull excluding pixel-mask filter')
     add_col(cr, 'EBAND', ebands,
             desc='Energy band of hull')
     add_col(cr, 'MAN_CODE', mancodes,
@@ -690,6 +705,7 @@ def write_stack_hull_as_ds9(hull, outdir, revision, color='green'):
 
 def process_ensemble(ensemblefile, ensemble, outdir,
                      mrgsrc3dir,
+                     compzero=9000,
                      revision=1,
                      creator=None,
                      master_color='green',
@@ -711,13 +727,21 @@ def process_ensemble(ensemblefile, ensemble, outdir,
         stacks. The names must match
         <stack>*mrgsrc3.fits* and there can only be one file per
         stack.
-    revision : int
+    compzero : int, optional
+        The value of the COMPONENT column in the HULLMATCH block
+        for a stack-level hull which has a component value of 0
+        (from the mrgsrc3 MEXTSRC block); note that there are no
+        such component values since they are 1 based. Must be >= 0.
+    revision : int, optional
         The value to write out to the header as the CHSVER
         keyword.
     creator : str or None, optional
         If set it is used as the CREATOR keyword value in the output
         file.
     """
+
+    if compzero < 0:
+        raise ValueError("compzero must be >= 0, sent {}".format(compzero))
 
     if os.path.exists(outdir):
         raise IOError("The output directory already exists: {}".format(outdir))
@@ -843,6 +867,7 @@ def process_ensemble(ensemblefile, ensemble, outdir,
                 outlines,
                 hull_store,
                 stacks=stacks,
+                compzero=compzero,
                 revision=revision,
                 creator=creator)
 
@@ -865,9 +890,13 @@ if __name__ == "__main__":
     parser.add_argument("--mrgsrc3dir",
                         default="/data/L3/chs_master_match/input/mrgsrc3",
                         help="The mrgsrc3 directory: default %(default)s")
+    parser.add_argument("--compzero", type=int,
+                        default=9000,
+                        help="The COMPONENT value for stack hull cpt=0: default %(default)s")
 
     args = parser.parse_args(sys.argv[1:])
 
     process_ensemble(args.ensemblefile, args.ensemble, args.outdir,
                      mrgsrc3dir=args.mrgsrc3dir,
+                     compzero=args.compzero,
                      creator=sys.argv[0])
