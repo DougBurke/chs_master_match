@@ -88,9 +88,6 @@ def doit(ensemblestk, stackmapfile, outdir):
         if os.path.exists(logfile):
             os.remove(logfile)
 
-        # Using check_output in this manner means we lose the
-        # diagnostics of any error, which is not ideal.
-        #
         try:
             out = check_output(['python', toolname, stackmapfile,
                                 ensname, dirname],
