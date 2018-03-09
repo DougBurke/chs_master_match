@@ -762,31 +762,39 @@ def do_masters_overlap(m1, m2, transforms):
     # clear to me whether hulls with the same base stack can overlap
     # so best check everything.
     #
-    p1 = m1['pos']
+    # For now in the situation where pos could be a 2D NumPy array
+    # or a list of NumPy 2D arrays. It is not unreasonable to have
+    # everything be a list here.
+    #
+    def listify(x):
+        if type(x) == list:
+            return x
+        assert x.ndim == 2
+        return [x]
+
+    p1 = listify(m1['pos'])
+
     if stack1 == stack2:
-        p2 = m2['pos']
+        p2 = listify(m2['pos'])
     else:
-        s2 = m2['eqpos']
-        if s2.ndim == 2:
-            s2 = s2[np.newaxis]
+        s2 = listify(m2['eqpos'])
         tr = transforms[stack1]
-        p2 = tr.invert(s2)
+        p2 = []
+        for s in s2:
+            # Add in a dummy axis to simplify conversion, due to the
+            # way the apply and invert methods work.
+            #
+            p = tr.invert(s[np.newaxis])
+            p2.append(p[0])
 
     # Since we occasionally have to deal with multiple polygons per
     # master, ensure we do it for all cases.
     #
-    if p1.ndim == 2:
-        p1 = p1[np.newaxis]
-    if p2.ndim == 2:
-        p2 = p2[np.newaxis]
-
     def toqa(m):
         "Change status and pos/eqpos arrays"
         m['status'] = 'qa'
-        if m['pos'].ndim == 3:
-            return
-        m['pos'] = m['pos'][np.newaxis]
-        m['eqpos'] = m['eqpos'][np.newaxis]
+        m['pos'] = listify(m['pos'])
+        m['eqpos'] = listify(m['eqpos'])
 
     # If any overlap we return True
     #
