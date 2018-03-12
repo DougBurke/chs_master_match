@@ -704,112 +704,6 @@ def write_stack_hull_as_ds9(hull, outdir, revision, color='green'):
         ofh.write(ostr)
 
 
-# TODO: move to chs_merge_hulls?
-#
-def do_masters_overlap(m1, m2, transforms):
-    """Do the two master hulls overlap?
-
-    Parameters
-    ----------
-    m1, m2 : dict
-        The two master hulls to check. The dicts are the return value
-        from chs_merge_hulls.make_merged_hulls. The contents of these
-        dicts may be changed by this routine.
-    transforms : dict
-        The keys are the stack and the values are the SKY -> EQ
-        transform for that stack.
-
-    Return
-    ------
-    overlap : bool
-        Do the hulls overlap?
-
-    Notes
-    -----
-    If a hull is in qa state then the check is made for each polygon
-    (it would probably make sense to calculate the convex hull of the
-    components and use that but that is  potential upgrade).
-
-    Each outline looks like:
-
-    {'status': 'okay', 'base_stack': 'acisfJ1711499m393614_001', 'eqpos': array([[ 258.35268129,  258.34706199,  258.31750321,  258.30620794,
-         258.28499025,  258.18857561,  258.15412969,  258.33819263,
-         258.35268129],
-       [ -39.51102123,  -39.51978671,  -39.55924129,  -39.5691155 ,
-         -39.58120352,  -39.5956472 ,  -39.45685734,  -39.45312316,
-         -39.51102123]]), 'pos': array([[ 1868.5,  1900.5,  2068.5,  2132.5,  2252.5,  2796.5,  2988.5,
-         1948.5,  1868.5],
-       [ 4772.5,  4708.5,  4420.5,  4348.5,  4260.5,  4156.5,  5172.5,
-         5196.5,  4772.5]])}
-
-    """
-
-    if m1['status'] == 'error' or m2['status'] == 'error':
-        return False
-
-    assert m1['pos'] is not None, 'master 1 POS is None'
-    assert m2['pos'] is not None, 'master 2 POS is None'
-
-    # We only care about stack for m1 and only in certain cases, but
-    # check anyway (to validate assumptions).
-    #
-    stack1 = m1['base_stack']
-    stack2 = m2['base_stack']
-    assert stack1 in transforms, 'master 1 unknown transform'
-    assert stack2 in transforms, 'master 2 unknown transform'
-
-    # Need to convert to the same SKY coordinate system; it is not
-    # clear to me whether hulls with the same base stack can overlap
-    # so best check everything.
-    #
-    # For now in the situation where pos could be a 2D NumPy array
-    # or a list of NumPy 2D arrays. It is not unreasonable to have
-    # everything be a list here.
-    #
-    def listify(x):
-        if type(x) == list:
-            return x
-        assert x.ndim == 2
-        return [x]
-
-    p1 = listify(m1['pos'])
-
-    if stack1 == stack2:
-        p2 = listify(m2['pos'])
-    else:
-        s2 = listify(m2['eqpos'])
-        tr = transforms[stack1]
-        p2 = []
-        for s in s2:
-            # Add in a dummy axis to simplify conversion, due to the
-            # way the apply and invert methods work.
-            #
-            p = tr.invert(s[np.newaxis])
-            p2.append(p[0])
-
-    # Since we occasionally have to deal with multiple polygons per
-    # master, ensure we do it for all cases.
-    #
-    def toqa(m):
-        "Change status and pos/eqpos arrays"
-        m['status'] = 'qa'
-        m['pos'] = listify(m['pos'])
-        m['eqpos'] = listify(m['eqpos'])
-
-    # If any overlap we return True
-    #
-    h1s = [utils.make_region_string(h1) for h1 in p1]
-    h2s = [utils.make_region_string(h2) for h2 in p2]
-    for h1 in h1s:
-        for h2 in h2s:
-            if utils.check_overlap(h1, h2):
-                toqa(m1)
-                toqa(m2)
-                return True
-
-    return False
-
-
 def process_ensemble(ensemblefile, ensemble, outdir,
                      mrgsrc3dir,
                      compzero=9000,
@@ -949,8 +843,6 @@ def process_ensemble(ensemblefile, ensemble, outdir,
     # ensure they do not overlap (marking them as qa cases if
     # they do), then they are written out.
     #
-    # THE OVERLAP CHECK IS NOT WRITTEN YET!
-    #
     outlines = []
     for hullcpts in master_hulls:
         outline = merge.make_merged_hull(hullcpts, mrgsrc3dir)
@@ -958,7 +850,7 @@ def process_ensemble(ensemblefile, ensemble, outdir,
 
     noverlap = 0
     for m1, m2 in itertools.combinations(outlines, 2):
-        if do_masters_overlap(m1, m2, transform_store):
+        if merge.do_masters_overlap(m1, m2, transform_store):
             noverlap += 1
 
     if noverlap > 0:
