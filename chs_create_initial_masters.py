@@ -52,9 +52,6 @@ created for each hull: stack, master, and qa.
   qa.<cpt>.v001.reg
   stack.<stack>.<stackcpt>.v001.reg
 
-TODO: there should be some visual distinction between these regions
-      when displayed in ds9.
-
 Notes
 -----
 
@@ -184,11 +181,12 @@ def read_hulls(stack, mrgsrc3dir):
     cr.MAN_CODE.convert_bits_to_bytes()
 
     out = []
-    for cpt, eband, mancode, pos, eqsrc in zip(cr.COMPONENT.values.copy(),
-                                               cr.EBAND.values.copy(),
-                                               cr.MAN_CODE.values.copy(),
-                                               cr.POS.values.copy(),
-                                               cr.get_column('EQSRC').values.copy()):
+    for cpt, eband, mancode, pos, eqsrc in \
+            zip(cr.COMPONENT.values.copy(),
+                cr.EBAND.values.copy(),
+                cr.MAN_CODE.values.copy(),
+                cr.POS.values.copy(),
+                cr.get_column('EQSRC').values.copy()):
 
         pos = utils.validate_polygon(pos, report=True,
                                      label="{} {}".format(stack,
@@ -208,8 +206,8 @@ def read_hulls(stack, mrgsrc3dir):
                     'transform': transform,
                     'area': area_pixels * pixsize * pixsize,
                     'eband': eband,
-                    # although converted to a byte, it is still a vector
-                    # column, although only of length 1
+                    # although converted to a byte, it is still a
+                    # vector column, although only of length 1
                     'man_code': mancode[0],
                     'pos': pos,
                     'eqpos': eqsrc})
@@ -352,7 +350,8 @@ def write_hulls(ensemble, outfile, hullcpts, hullareas, outlines,
         'len = {} vs {}'.format(len(hullcpts), len(outlines))
 
     extra_hdr = [('ENSEMBLE', ensemble, 'The ensemble'),
-                 ('COMPZERO', compzero, 'The COMPONENT value for cpt=0')]
+                 ('COMPZERO', compzero,
+                  'The COMPONENT value for cpt=0')]
     if stacks is not None:
         stacks = sorted(list(stacks))
         for i, stack in enumerate(stacks):
@@ -692,10 +691,10 @@ def ds9_header(ofh, color='green'):
 def write_stack_hull_as_ds9(hull, outdir, revision, color='green'):
     """Write the stack hull as a ds9 region file."""
 
-    outfile = os.path.join(outdir,
-                           'stack.{}.{}.v{:03d}.reg'.format(hull['stack'],
-                                                            hull['component'],
-                                                            revision))
+    rfile = 'stack.{}.{}.v{:03d}.reg'.format(hull['stack'],
+                                             hull['component'],
+                                             revision)
+    outfile = os.path.join(outdir, rfile)
     with open(outfile, 'w') as ofh:
         ds9_header(ofh, color=color)
         ostr = ds9_shape(hull['eqpos'])
@@ -753,9 +752,9 @@ def process_ensemble(ensemblefile, ensemble, outdir,
     nstacks = len(stacks)
 
     # I need to pass around eband,mancode info to write_hulls and
-    # I am too lazy to re-architect the code, so I am adding a "global"
-    # dict which contains the stack-level information indexed by
-    # (STACKID, COMPONENT), since that is used in write_hulls.
+    # I am too lazy to re-architect the code, so I am adding a
+    # "global" dict which contains the stack-level information indexed
+    # by (STACKID, COMPONENT), since that is used in write_hulls.
     #
     hull_store = {}
     transform_store = {}
