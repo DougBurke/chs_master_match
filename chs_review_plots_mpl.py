@@ -601,6 +601,22 @@ def draw_hulls_and_images(master_hull,
                  color=lblcol, fontsize=lblsize,
                  transform=ax.transAxes)
 
+        # Label if the stack-level hull was manually-modified.
+        #
+        manadj = None
+        for hull in hullmap[stack]:
+            if hull['component'] != cpt:
+                continue
+
+            assert manadj is None
+            manadj = hull['mancode'] != 0
+
+        assert manadj is not None
+        if manadj:
+            plt.text(0.95, 0.9, "ManAdj", horizontalalignment='right',
+                     color=lblcol, fontsize=lblsize,
+                     transform=ax.transAxes)
+
         # draw the hulls for this stack
         #
         # draw the other hulls first, as reference
