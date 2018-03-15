@@ -3,7 +3,9 @@ Create review plots.
 
 This requires matplotlib and CIAO.
 
-Use /data/dburke2/sds/py27/ciao-4.9/
+Use
+  /data/L3/chs_master_match/local/binpy27/ciao-4.9/
+  /data/L3/chs_master_match/local/binpy27/ciao-4.10/
 
 """
 
@@ -306,14 +308,14 @@ def draw_hulls_and_images(master_hull,
                       "missing:\n{}".format(emsg))
 
     # could go for a more-adaptive scheme
-    nsize = np.ceil(np.sqrt(nhulls)).astype(np.int)
-    nplots = nsize * nsize
-    if nsize > 3:
+    if nhulls <= 9:
+        nsize = np.ceil(np.sqrt(nhulls)).astype(np.int)
+        nplots = nsize * nsize
+        npages = 1
+    else:
         nsize = 3
         nplots = nsize * nsize
-        npages = 1 + nhulls // nplots
-    else:
-        npages = 1
+        npages = np.ceil(nhulls / (nplots * 1.0)).astype(np.int)
 
     def save_plot(pagenum):
         """Create PNG output then destroy the window"""
@@ -662,12 +664,9 @@ def draw_hulls_and_images(master_hull,
                 ax.coords[l].set_ticklabel_visible(False)
                 ax.coords[l].set_axislabel('')
 
-    # need to save the last page.
+    # Don't forget to save the last page.
     save_plot(page_idx)
-    if page_idx != npages:
-        print("LOG: page_idx={} expected {}".format(page_idx, npages))
-
-    # assert page_idx == npages
+    assert page_idx == npages
     return {'npages': npages}
 
 
