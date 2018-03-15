@@ -373,11 +373,19 @@ def read_master_hulls(chsfile):
         The contents of the HULLMATCH and HULLLIST block, and metadata
         about the file (e.g. ensemble and CHSVER value). The
         hullmatch and hulllist dicts have keys of Master_Id.
+        If HULLMATCH and HULLLIST can not be found then SRCMATCH
+        and SRCLIST are used.
     """
 
     ds = pycrates.CrateDataset(chsfile, mode='r')
 
-    cr = ds.get_crate('HULLMATCH')
+    prefix = 'HULL'
+    try:
+        cr = ds.get_crate('{}MATCH'.format(prefix))
+    except IndexError:
+        prefix = 'SRC'
+        cr = ds.get_crate('{}MATCH'.format(prefix))
+
     hullmatch = {}
 
     # Map from stack id to the "number" of the stack in the ensemble
@@ -402,7 +410,7 @@ def read_master_hulls(chsfile):
         except KeyError:
             hullmatch[mid] = [store]
 
-    cr = ds.get_crate('HULLLIST')
+    cr = ds.get_crate('{}LIST'.format(prefix))
 
     hulllist = {}
     zs = zip(cr.Master_Id.values,
