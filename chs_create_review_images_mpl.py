@@ -47,7 +47,7 @@ help_str = "Create the review PNG files for CHS in this ensemble."
 
 
 def read_qa_hulls(qadir, revision, master_id):
-    """Read in the QA hulls for the given master hull.
+    """Read in the QA hull (or hulls) for the given master hull.
 
     Parameters
     ----------
@@ -64,7 +64,7 @@ def read_qa_hulls(qadir, revision, master_id):
     qahulls : list of dict
         Each entry contains the 'eqpos' keyword, which is a 2 by npts
         NumPy array with the celestial coordinates of the polygon
-        (closed, only finite values).
+        (closed, only finite values). There can be one or more items.
 
     """
 
@@ -72,8 +72,8 @@ def read_qa_hulls(qadir, revision, master_id):
                           'qa.{:03d}.v{:03d}.fits'.format(master_id,
                                                           revision))
     cr = pycrates.read_file(infile)
-    if cr.get_nrows() < 2:
-        raise IOError("Expected at least 2 rows")
+    if cr.get_nrows() < 1:
+        raise IOError("Expected at least 1 row: {}".format(infile))
 
     out = []
     for cpt, npts, eqpos in zip(cr.COMPONENT.values,
