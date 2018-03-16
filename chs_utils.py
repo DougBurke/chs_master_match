@@ -375,6 +375,12 @@ def read_master_hulls(chsfile):
         hullmatch and hulllist dicts have keys of Master_Id.
         If HULLMATCH and HULLLIST can not be found then SRCMATCH
         and SRCLIST are used.
+
+    Notes
+    -----
+    The component values *are corrected* for the COMPZERO value
+    (if set, if not set it is taken to be 0), and the COMPZERO
+    value is included in the output for each hull.
     """
 
     ds = pycrates.CrateDataset(chsfile, mode='r')
@@ -396,6 +402,11 @@ def read_master_hulls(chsfile):
         assert stkid not in ensemblemap, stkid
         ensemblemap[stkid] = i
 
+    # Need to support old data during testing
+    compzero = cr.get_key_value('COMPZERO')
+    if compzero is None:
+        compzero = 0
+
     zs = zip(cr.Master_Id.values,
              cr.STACKID.values,
              cr.COMPONENT.values,
@@ -403,7 +414,8 @@ def read_master_hulls(chsfile):
     for mid, stackid, component, mtype in zs:
         store = {'master_id': mid,
                  'stack': stackid,
-                 'component': component,
+                 'component': component - compzero,
+                 'compzero': compzero,
                  'match_type': mtype}
         try:
             hullmatch[mid].append(store)
