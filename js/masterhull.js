@@ -42,16 +42,6 @@ function setScaling(newScale) {
   changePage();
 }
 
-// Map from stack value to the detected energy band.
-// This is tricky because for multiple components there is
-// no guarantee that the band is the same for the different
-// components. So the choice is either to go for a component
-// view, or to either pick one band or combine them.
-// Thew assumption is that this has already been decided by
-// the time this JS code has been written out.
-//
-// var enbands = {{ stack_band|safe }};
-
 // Store the region information for this *ensemble*; that is,
 // provide coordinates (WCS) for all master hulls and stacks.
 //
@@ -76,10 +66,10 @@ function goToRaDec(wcs, opts) {
 
 // Finalize the widgets in the window and add the regions.
 //
-function finalizeJS9Display(stack, winid) {
+function finalizeJS9Display(stack, cptnum, winid) {
 
   return function(img) {
-    setupJS9(img, stack, winid);
+    setupJS9(img, stack, cptnum, winid);
     addRegionsToJS9(img, stack, winid);
 
     /* TODO: updateJS9StackCounter(winid, out.nhulls); */
@@ -119,7 +109,7 @@ const masterLayer = 'regions';
 //
 // Is also sets up the layers.
 //
-function setupJS9(img, stack, winid) {
+function setupJS9(img, stack, cptnum, winid) {
 
   // Hard code logic for the parent element (could find it by
   // hunting up the tree but can not be bothered at the moment)
@@ -473,13 +463,16 @@ function updateJS9StackCounter(winid, n) {
  * Note that the event listeners are added in the
  * setupJS9 callback.
  */
-function js9_display_html(stack, stacknum, id) {
+function js9_display_html(stack, stacknum, cptnum, band, id) {
   let html = "<div class='stackid' id='" + id + "stackid'>" +
-    "<span style='float: left;'>Stack: " + stacknum + ": " +
-    stack + "</span>" +
-    "</div>" +
+    "<span style='float: left;'>Stack: " + 
+      stacknum.toString() + ": " + stack +
+      " cpt: " + cptnum.toString() + 
+      " band: " + band +
+      "</span></div>" +
     "<div class='useropts'>";
 
+  html += "<div class='buttonopts'>";
   let name = id + "sigma";
   html += "<div class='blur'><span>Blur</span>";
   const sigmas = [0, 1, 2, 3, 4];
@@ -494,21 +487,6 @@ function js9_display_html(stack, stacknum, id) {
     html += "<label for='" + l + "'>" + sigma + "</label>";
   }
   html += "</div>";
-
-  /* hide for now
-  html += "<div class='reload'>";
-  html += "<button id='" + id;
-  html += "ReloadRegions'>Reload Regions</button>";
-  html += "</div>";
-  */
-
-  const psfs = settings.regionstore.stackpsfs[stack];
-  if (typeof psfs !== "undefined") {
-      html += "<div class='reload'>";
-      html += "<button id='" + id;
-      html += "TogglePSFs'>Hide PSFs</button>";
-      html += "</div>";
-  }
 
   const all_bins = [1, 2, 4, 8, 16, 32, 64, 128];
   let def_binsize, def_start;
@@ -536,13 +514,30 @@ function js9_display_html(stack, stacknum, id) {
     html += "<label for='" + l + "'>" + binsize + "</label>";
   }
   html += "</div>";
+  html += "</div>";  // class=buttonopts
+
+  /* hide for now
+  html += "<div class='reload'>";
+  html += "<button id='" + id;
+  html += "ReloadRegions'>Reload Regions</button>";
+  html += "</div>";
+  */
+
+  const psfs = settings.regionstore.stackpsfs[stack];
+  if (typeof psfs !== "undefined") {
+      html += "<div class='reload'>";
+      html += "<button id='" + id;
+      html += "TogglePSFs'>Hide PSFs</button>";
+      html += "</div>";
+  }
+
 
   html += "<div class='zoom'>Zoom: ";
   html += "<button class='zoomin'>In</button>";
   html += "<button class='zoomout'>Out</button>";
   html += "</div>";
 
-  html += "<div class='showable'>Toggle: ";
+  html += "<div class='showable'>"; // "Toggle: ";
   html += "<button id='" + id + "ShowPanner'>Panner</button>";
   html += "</div>";
 
@@ -560,7 +555,7 @@ function js9_display_html(stack, stacknum, id) {
 //
 //
 var idctr = 1;
-function js9_id(stack) {
+function js9_id(stack, cptnum) {
   // return stack;
 
   var retval = idctr.toString();
@@ -568,29 +563,50 @@ function js9_id(stack) {
   return "js9win" + retval;
 }
 
+// Create the filter expression for the band.
+//
+// Is the minimum energy for the ultra-soft band correct?
+// I don't think we have any u-band CHS so it is somewhat academic.
+//
+function band_to_filter(band) {
+    if (band == 'b')      { return "energy >= 500 && energy < 7000"; }
+    else if (band == 'u') { return "energy >= 200 && energy < 500"; }
+    else if (band == 's') { return "energy >= 500 && energy < 1200"; }
+    else if (band == 'm') { return "energy >= 1200 && energy < 2000"; }
+    else if (band == 'h') { return "energy >= 2000 && energy < 7000"; }
+    else if (band == 'w') { return ""; }
+    else {
+	console.log("Unexpected band: " + band);
+	return "";
+    }
+}
+
 // Applies an energy filter for ACIS data to try and match the hull(s).
 //
-function showInJS9(stackval) {
-  if (stackval.trim() === '') { return; }
+function showInJS9(val) {
+  if (val.trim() === '') { return; }
 
-  const toks = stackval.split(',');
-  if (toks.length != 2) {
-    alert("Internal error: stackval=[" + stackval + "]");
+  const toks = val.split(',');
+  if (toks.length != 3) {
+    alert("Internal error: val=[" + val + "]");
     return;
   }
 
   const stack = toks[0];
   const stacknum = toks[1];
+  const cptnum = toks[2];
 
-  const winid = js9_id(stack);
-  const opts = {onload: finalizeJS9Display(stack, winid)};
+  const winid = js9_id(stack, cptnum);
+  const opts = {onload: finalizeJS9Display(stack, cptnum, winid)};
+
+  const band = settings.enbands_cpt[stack + "." + cptnum];
 
   if (stack.startsWith('acis')) {
     opts.bin = 8;
     opts.xdim = 8192;
     opts.ydim = 8192;
-    // does this actually do anything?
-    opts.filter = settings.enbands[stack];
+    // does setting this actually do anything?
+    opts.filter = band_to_filter(band);
   } else {
     opts.bin = 64;
     opts.xdim = 16384;
@@ -598,7 +614,8 @@ function showInJS9(stackval) {
   }
   opts.id = winid;
   return JS9.LoadWindow('/evt3/' + stack, opts, 'light',
-                        js9_display_html(stack, stacknum, opts.id));
+                        js9_display_html(stack, stacknum, cptnum, band,
+					 opts.id));
 }
 
 /*** callback code for handling region changes ***/

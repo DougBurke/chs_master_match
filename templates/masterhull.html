@@ -28,7 +28,7 @@
 	revstr: "{{ revstr }}",
 	mid: "{{ mid }}",
 	masterid: {{ masterid }},
-	enbands: {{ stack_band }},
+        enbands_cpt: {{ enbands_cpt }},
 	regionstore: {masterhulls: {{ hull_store }},
                       stackhulls: {{ stack_polys }},
                       stackpsfs: {{ stack_psfs }}},
@@ -79,6 +79,7 @@
       </div>
 
       <div id='js9controls'>JS9:
+<!--
 	<select id='showinjs9'>
 	  <option value='' selected></option>
 
@@ -89,6 +90,21 @@
 {% endfor %}
 
         </select>
+-->
+
+	<select id='showinjs9'>
+	  <option value='' selected></option>
+
+{% for stk in ordered_stacks %}
+ {% for cpt in hull_store[masterid]['components'][stk] %}
+          {# want numeric value as 03d here #}
+          <option
+            value='{{ stk }},{{ info['stackmap'][stk] }},{{ cpt }}'>{{ info['stackmap'][stk] }}: {{ stk }} . {{ cpt }}</option>
+ {% endfor %}
+{% endfor %}
+
+        </select>
+
       </div>
 
       <div id='summary'>

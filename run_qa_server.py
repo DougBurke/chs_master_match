@@ -1509,32 +1509,13 @@ def create_master_hull_page(env,
     # order by the stack number
     ordered_stks = sorted(stks, key=lambda stk: info['stackmap'][stk])
 
-    # Restrict the band information just to those stack-level hulls
-    # that form the master hull. This can mean that the display
-    # is not optimised for stack-level hulls from another master
-    # source, bit these are informational only.
-    #
-    # The stack band information is only used for ACIS stacks,
-    # and is a combination of the bands for the individual
-    # components (at least at present).
-    #
-    minband = {'b': 500, 'u': 200, 's': 500, 'm': 1200, 'h': 2000}
-    maxband = {'b': 7000, 'u': 500, 's': 1200, 'm': 2000, 'h': 7000}
-
-    stack_band = {}
-    for stk in stks:
-        if stk.startswith('h'):
-            continue
-
-        elo = 10000
-        ehi = 0
-        for cpt in cpts[stk]:
-            eband = ebands_by_component[(stk, cpt)]
-            elo = min(elo, minband[eband])
-            ehi = max(ehi, maxband[eband])
-
-        stack_band[stk] = 'energy >= {} && energy < {}'.format(elo,
-                                                               ehi)
+    enbands_cpt = {}
+    for key, eband in ebands_by_component.items():
+        # Had problems sending a pair via JSON, so convert to a string
+        # for the key
+        stk, cpt = key
+        newkey = "{}.{}".format(stk, cpt)
+        enbands_cpt[newkey] = eband
 
     # What about the stack-level hull polygons?
     #
@@ -1639,7 +1620,7 @@ def create_master_hull_page(env,
                            'hull': hull,
                            'is_latest': is_latest,
                            'ordered_stacks': ordered_stks,
-                           'stack_band': stack_band,
+                           'enbands_cpt': enbands_cpt,
                            'hull_store': hull_store,
                            'stack_polys': stack_polys,
                            'stack_psfs': psfs,
