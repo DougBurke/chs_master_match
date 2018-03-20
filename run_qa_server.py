@@ -934,8 +934,13 @@ def get_data_master(datadir, userdir, rawdir, ensemble, masterid):
             k = '{:03d}'.format(i)
             stackmap[cr.get_key_value('STKID{}'.format(k))] = k
 
+    # Correct for the COMPZERO value, if set
+    cpt0 = cr.get_key_value('COMPZERO')
+    if cpt0 is None:
+        cpt0 = 0
+
     stacks = cr.STACKID.values.copy()
-    components = cr.COMPONENT.values.copy()
+    components = cr.COMPONENT.values.copy() - cpt0
     cr = None
 
     infile = os.path.join(dname,
@@ -996,6 +1001,7 @@ def get_data_master(datadir, userdir, rawdir, ensemble, masterid):
             slabel = '{}.{}'.format(stklbl, cpt)
 
         out['stacks'].append({'stack': stk, 'component': cpt,
+                              'cpt0': cpt0,
                               'label': slabel,
                               'ra': sra,
                               'dec': sdec,
@@ -1317,7 +1323,7 @@ def create_master_hull_page(env,
         errlog("missing rawdir {}".format(dname))
         out = "<!DOCTYPE html><html><head><title>INTERNAL ERROR</title>"
         out += "</head><body><p>Missing dir={}".format(dname)
-        out += + "- see Doug!</p></body></html>"
+        out += "- see Doug!</p></body></html>"
         return 404, out
 
     hullfile = os.path.join(dname,
@@ -1327,7 +1333,7 @@ def create_master_hull_page(env,
         errlog("missing hullfile {}".format(hullfile))
         out = "<!DOCTYPE html><html><head><title>INTERNAL ERROR</title>"
         out += "</head><body><p>Missing hullfile={}".format(hullfile)
-        out += + "- see Doug!</p></body></html>"
+        out += "- see Doug!</p></body></html>"
         return 404, out
 
     # From the hull file,
@@ -1346,6 +1352,9 @@ def create_master_hull_page(env,
     # SRCxxx versions if they are not found (they should be HULLxxx
     # but to support testing want to allow SRCxxx versions).
     #
+    # The component values are corrected for the COMPZERO keyword
+    # (if set).
+    #
     try:
         ds = pycrates.CrateDataset(hullfile, mode='r')
     except IOError as exc:
@@ -1353,7 +1362,7 @@ def create_master_hull_page(env,
         out = "<!DOCTYPE html><html><head><title>INTERNAL ERROR</title>"
         out += "</head><body><p>Error reading "
         out += "hullfile={}\nreason=\n{}".format(hullfile, exc)
-        out += + "- see Doug!</p></body></html>"
+        out += "- see Doug!</p></body></html>"
         return 404, out
 
     try:
@@ -1367,7 +1376,7 @@ def create_master_hull_page(env,
             out = "<!DOCTYPE html><html><head><title>INTERNAL ERROR</title>"
             out += "</head><body><p>Error reading HULL/SRCMATCH block of "
             out += "hullfile={}\nreason=\n{}".format(hullfile, exc)
-            out += + "- see Doug!</p></body></html>"
+            out += "- see Doug!</p></body></html>"
             return 404, out
 
     # We have aleady got this information, but recreate it
@@ -1378,7 +1387,7 @@ def create_master_hull_page(env,
         out = "<!DOCTYPE html><html><head><title>INTERNAL ERROR</title>"
         out += "</head><body><p>No STKIDNUM keyword in "
         out += "hullfile={}\n".format(hullfile)
-        out += + "- see Doug!</p></body></html>"
+        out += "- see Doug!</p></body></html>"
         return 404, out
 
     stack_map = {}
@@ -1390,10 +1399,14 @@ def create_master_hull_page(env,
             out = "<!DOCTYPE html><html><head><title>INTERNAL ERROR</title>"
             out += "</head><body><p>No {} keyword in ".format(key)
             out += "hullfile={}\n".format(hullfile)
-            out += + "- see Doug!</p></body></html>"
+            out += "- see Doug!</p></body></html>"
             return 404, out
 
         stack_map[val] = i
+
+    cpt0 = cr.get_key_value('COMPZERO')
+    if cpt0 is None:
+        cpt0 = 0
 
     # Do not need the eband info to be indexed by master id
     hull_store = {}
@@ -1406,6 +1419,7 @@ def create_master_hull_page(env,
                     cr.MAN_CODE.values):
 
         midval, stackid, cpt, eband, mancode = vals
+        cpt -= cpt0
 
         # NOTE: mancode is encoded "strangely", so remove the
         #       extra dimension
@@ -1448,7 +1462,7 @@ def create_master_hull_page(env,
             out = "<!DOCTYPE html><html><head><title>INTERNAL ERROR</title>"
             out += "</head><body><p>Error reading SRCLIST block of "
             out += "hullfile={}\nreason=\n{}".format(hullfile, exc)
-            out += + "- see Doug!</p></body></html>"
+            out += "- see Doug!</p></body></html>"
             return 404, out
 
     for itervals in zip(cr.Master_Id.values,
@@ -1533,7 +1547,7 @@ def create_master_hull_page(env,
             out = "<!DOCTYPE html><html><head><title>INTERNAL ERROR</title>"
             out += "</head><body><p>Unable to read stack "
             out += "regfile={}".format(regfile)
-            out += + "- see Doug!</p></body></html>"
+            out += "- see Doug!</p></body></html>"
             return 404, out
 
         sra, sdec, slabel = regstr_to_coords(regstr)
