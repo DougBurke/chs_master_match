@@ -180,6 +180,19 @@ function setupJS9(img, stack, cptnum, winid) {
 	      });
   }
 
+  // This currently doesn't work very well, as it loses information
+  // on any other bin/... operation that has been applied.
+  //
+  const bandButton = document.getElementById(winid + 'BandChoice');
+  if (bandButton !== null) {
+      bandButton
+	  .addEventListener("change", (e) => {
+		  const enfilter = band_to_filter(e.target.value);
+		  console.log("new filter = [" + enfilter + "]");
+		  JS9.DisplaySection({filter: enfilter}, opts);
+	      });
+  }
+
   const toggleButton = document.getElementById(winid + 'TogglePSFs');
   if (toggleButton !== null) {
       toggleButton
@@ -521,6 +534,26 @@ function js9_display_html(stack, stacknum, cptnum, band, id) {
   html += "<button id='" + id;
   html += "ReloadRegions'>Reload Regions</button>";
   html += "</div>";
+  */
+
+  /* hide until the behavior of DisplaySection has either been improved
+     or a way to get at the other information needed has been added to
+     the JS9 API
+  if (band !== "w") {
+      html += "<div class='bandchoice'>Band: ";
+      html += "<select id='" + id + "BandChoice'>";
+
+      for (const bandval of ['b', 'u', 's', 'm', 'h']) {
+	  html += "<option value='" + bandval + "'";
+	  if (bandval === band) {
+	      html += " selected";
+	  }
+	  html += ">" + bandval + "</option>";
+      }
+
+      html += "</select>";
+      html += "</div>";
+  }
   */
 
   const psfs = settings.regionstore.stackpsfs[stack];
