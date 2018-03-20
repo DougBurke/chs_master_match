@@ -183,9 +183,9 @@ function setupJS9(img, stack, cptnum, winid) {
   // This currently doesn't work very well, as it loses information
   // on any other bin/... operation that has been applied.
   //
-  const bandButton = document.getElementById(winid + 'BandChoice');
-  if (bandButton !== null) {
-      bandButton
+  const bandSelect = document.getElementById(winid + 'BandChoice');
+  if (bandSelect !== null) {
+      bandSelect
 	  .addEventListener("change", (e) => {
 		  const enfilter = band_to_filter(e.target.value);
 		  console.log("new filter = [" + enfilter + "]");
@@ -197,6 +197,14 @@ function setupJS9(img, stack, cptnum, winid) {
   if (toggleButton !== null) {
       toggleButton
 	  .addEventListener("click", (e) => { togglePSFs(stack, winid); });
+  }
+
+  const psfColSelect = document.getElementById(winid + 'PSFColor');
+  if (psfColSelect !== null) {
+      psfColSelect
+	  .addEventListener("change", (e) => {
+		  colorizePSFs(winid, e.target.value);
+	      });
   }
 
   container.getElementsByClassName("zoomin")[0]
@@ -291,6 +299,10 @@ function togglePSFs(stack, winid) {
   let label = " PSFs";
   if (flag) { label = "Hide" + label; } else { label = "Show" + label; }
   document.getElementById(winid + 'TogglePSFs').innerHTML = label;
+}
+
+function colorizePSFs(winid, newcol) {
+  JS9.ChangeShapes(psfLayer, "all", {color: newcol}, {display: winid});
 }
 
 // Add the stack-level and master hull(s) to the JS9 window.
@@ -562,6 +574,21 @@ function js9_display_html(stack, stacknum, cptnum, band, id) {
       html += "<button id='" + id;
       html += "TogglePSFs'>Hide PSFs</button>";
       html += "</div>";
+
+      html += "<div class='colorize'>";
+      html += "<select id='" + id + "PSFColor'>";
+      for (const newcol of ['yellow', 'white', 'black', 'red',
+			    'orange', 'cyan', 'blue', 'brown']) {
+	  html += "<option value='" + newcol + "'";
+	  if (newcol === 'yellow') {
+	      html += " selected";
+	  }
+	  html += ">" + newcol + "</option>";
+      }
+
+      html += "</select>";
+      html += "</div>";
+
   }
 
 
