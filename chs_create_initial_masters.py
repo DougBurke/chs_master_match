@@ -170,7 +170,11 @@ def read_hulls(stack, mrgsrc3dir):
     if cr.get_nrows() == 0:
         return []
 
-    transform = cr.get_transform('EQSRC').copy()
+    try:
+        transform = cr.get_transform('EQSRC').copy()
+    except Exception as exc:
+        raise IOError("Unable to get EQSRC from " +
+                      "{}\n{}".format(infile, exc))
 
     # One pixel in arcsec
     pixsize = 3600.0 * transform.get_parameter_value('CDELT')[1]

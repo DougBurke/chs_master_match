@@ -4,6 +4,7 @@
 Usage:
 
   ./process_ensembles.py ensemblestk stackmap outdir
+      --mrgsrc3dir <dirname>
 
 Aim:
 
@@ -31,7 +32,8 @@ import sys
 import stk
 
 
-def doit(ensemblestk, stackmapfile, outdir):
+def doit(ensemblestk, stackmapfile, outdir,
+         mrgsrc3dir=""):
     """Process the ensembles to find master hulls.
 
     If the output directory for an ensemble exists it is skipped.
@@ -47,7 +49,17 @@ def doit(ensemblestk, stackmapfile, outdir):
     outdir : str
         The name of the output directory; it will be created
         if it does not exist.
+    mrgsrc3dir : str, optional
+        Passed through as the --mrgsrc3dir value if not empty.
     """
+
+    # Assume the directory name does not have leading or trailing
+    # white space.
+    #
+    mrgsrc3dir = mrgsrc3dir.strip()
+    if mrgsrc3dir != "" and not os.path.isdir(mrgsrc3dir):
+        raise IOError("Unable to find " +
+                      "mrgsrc3dir={}".format(mrgsrc3dir))
 
     # Look for the tool in the same directory as this script
     dirname = os.path.dirname(__file__)
@@ -88,10 +100,13 @@ def doit(ensemblestk, stackmapfile, outdir):
         if os.path.exists(logfile):
             os.remove(logfile)
 
+        args = ['python', toolname, stackmapfile,
+                ensname, dirname]
+        if mrgsrc3dir != "":
+            args.extend(["--mrgsrc3dir", mrgsrc3dir])
+
         try:
-            out = check_output(['python', toolname, stackmapfile,
-                                ensname, dirname],
-                               stderr=STDOUT)
+            out = check_output(args, stderr=STDOUT)
         except CalledProcessError as exc:
             out = "ERROR: ensemble={}\n{}\n".format(ensname, exc) + \
                 "\n" + exc.output
@@ -123,11 +138,27 @@ def doit(ensemblestk, stackmapfile, outdir):
     sys.exit(1)
 
 
+help_str = "Run chs_create_initial_masters on a set of ensembles."
+
 if __name__ == "__main__":
 
-    if len(sys.argv) != 4:
-        sys.stderr.write("Usage: {} ".format(sys.argv[0]))
-        sys.stderr.write("ensemblestk stackmap outdir\n")
-        sys.exit(1)
+    import argparse
 
-    doit(sys.argv[1], sys.argv[2], sys.argv[3])
+    parser = argparse.ArgumentParser(description=help_str,
+                                     prog=sys.argv[0])
+
+    parser.add_argument("ensemblestk",
+                        help="The ensembles to process, as a stack")
+    parser.add_argument("stackmap", type=str,
+                        help="The mapping betweenensemble and stack ids")
+    parser.add_argument("outdir", type=str,
+                        help="The output directory (must not exist)")
+
+    parser.add_argument("--mrgsrc3dir",
+                        default="",
+                        help="The mrgsrc3 directory: default %(default)s")
+
+    args = parser.parse_args(sys.argv[1:])
+
+    doit(args.ensemblestk, args.stackmap, args.outdir,
+         mrgsrc3dir=args.mrgsrc3dir)
