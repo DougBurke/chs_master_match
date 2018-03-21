@@ -193,17 +193,11 @@ function setupJS9(img, stack, cptnum, winid) {
 	      });
   }
 
-  const toggleButton = document.getElementById(winid + 'TogglePSFs');
-  if (toggleButton !== null) {
-      toggleButton
-	  .addEventListener("click", (e) => { togglePSFs(stack, winid); });
-  }
-
   const psfColSelect = document.getElementById(winid + 'PSFColor');
   if (psfColSelect !== null) {
       psfColSelect
 	  .addEventListener("change", (e) => {
-		  colorizePSFs(winid, e.target.value);
+		  colorizePSFs(stack, winid, e.target.value);
 	      });
   }
 
@@ -260,9 +254,6 @@ function add_hull_to_js9(hull, opts, win, layer='regions') {
 }
 
 
-// Are the PSFs being shown or hidden for a stack?
-var psfState = {};
-
 function addPSFRegions(stack, win) {
   const psfs = settings.regionstore.stackpsfs[stack];
   if (typeof psfs === "undefined") {
@@ -279,7 +270,6 @@ function addPSFRegions(stack, win) {
   // not significantly different in terms of the runtime).
   //
   for (let psf of psfs) {
-
     const shape = 'fk5; ellipse(' + psf.ra.toString() + ',' + 
 	psf.dec.toString() + ',' +
         psf.r0.toString() + '",' +
@@ -288,21 +278,18 @@ function addPSFRegions(stack, win) {
 
     JS9.AddShapes(psfLayer, shape, psfOpts, win);
   }
-
-  psfState[stack] = true;
 }
 
-function togglePSFs(stack, winid) {
-  const flag = !psfState[stack];
-  JS9.ShowShapeLayer(psfLayer, flag, {display: winid});
-  psfState[stack] = flag;
-  let label = " PSFs";
-  if (flag) { label = "Hide" + label; } else { label = "Show" + label; }
-  document.getElementById(winid + 'TogglePSFs').innerHTML = label;
-}
-
-function colorizePSFs(winid, newcol) {
-  JS9.ChangeShapes(psfLayer, "all", {color: newcol}, {display: winid});
+// Note that newcol can be set to 'hide', which means toggle off.
+//
+function colorizePSFs(stack, winid, newcol) {
+  if (newcol === 'hide') {
+    JS9.ShowShapeLayer(psfLayer, false, {display: winid});
+  } else {
+    // could track whether a show call is needed, but be lazy
+    JS9.ShowShapeLayer(psfLayer, true, {display: winid});
+    JS9.ChangeShapes(psfLayer, "all", {color: newcol}, {display: winid});
+  }
 }
 
 // Add the stack-level and master hull(s) to the JS9 window.
@@ -583,20 +570,15 @@ function js9_display_html(stack, stacknum, cptnum, band, id) {
 
   const psfs = settings.regionstore.stackpsfs[stack];
   if (typeof psfs !== "undefined") {
-      html += "<div class='reload'>";
-      html += "<button id='" + id;
-      html += "TogglePSFs'>Hide PSFs</button>";
-      html += "</div>";
-
-      html += "<div class='colorize'>";
+      html += "<div class='colorize'>PSF: ";
       html += "<select id='" + id + "PSFColor'>";
-      for (const newcol of ['yellow', 'white', 'black', 'red',
+      for (const newopt of ['hide', 'yellow', 'white', 'black', 'red',
 			    'orange', 'cyan', 'blue', 'brown']) {
-	  html += "<option value='" + newcol + "'";
-	  if (newcol === 'yellow') {
+	  html += "<option value='" + newopt + "'";
+	  if (newopt === 'yellow') {
 	      html += " selected";
 	  }
-	  html += ">" + newcol + "</option>";
+	  html += ">" + newopt + "</option>";
       }
 
       html += "</select>";
