@@ -638,8 +638,17 @@ def draw_hulls_and_images(master_hull,
                     draw_hull(ax_trans, hull, ocolor, 1, 'dotted',
                               opacity=0.2)
 
+        # Draw the hull for this component in orange and the
+        # others in the stack as a red-ish color. Trying to
+        # match masterhull.js behavior.
+        #
         for hull in hullmap[stack]:
-            draw_hull(ax_trans, hull, 'orange', 2, 'solid')
+            if hull['component'] == cpt:
+                hullcol = 'orange'
+            else:
+                hullcol = '#cc3333'
+
+            draw_hull(ax_trans, hull, hullcol, 2, 'solid')
 
         # do we have a master hull to add?
         #

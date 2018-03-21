@@ -70,7 +70,7 @@ function finalizeJS9Display(stack, cptnum, winid) {
 
   return function(img) {
     setupJS9(img, stack, cptnum, winid);
-    addRegionsToJS9(img, stack, winid);
+    addRegionsToJS9(img, stack, cptnum, winid);
 
     /* TODO: updateJS9StackCounter(winid, out.nhulls); */
 /***
@@ -311,7 +311,7 @@ function colorizePSFs(winid, newcol) {
 //
 // Stack level hulls are drawn first (maybe in a different layer?)
 //
-function addRegionsToJS9(img, stack, regions) {
+function addRegionsToJS9(img, stack, cptnum, regions) {
 
   let stackhulls = settings.regionstore.stackhulls[stack];
   if (typeof stackhulls === "undefined") {
@@ -330,17 +330,28 @@ function addRegionsToJS9(img, stack, regions) {
                   tags: 'stack'};
 
   for (let shull of stackhulls) {
+
     // linestyle: solid for mancode is 0, otherwise
     // dotted.
     //
     // wanted to add strokeWidth to increase the width, but can
     // not get it to work
     //
+    // The color depends on whether this is the "selected" component
+    // or not.
+    //
+    if (shull.component == cptnum) {
+      hullOpts.color = 'orange';
+    } else {
+      hullOpts.color = '#cc3333'; // a red-ish color
+    }
+
     if (shull.mancode === 0) {
       delete hullOpts.strokeDashArray;
     } else {
       hullOpts.strokeDashArray = linestyle;
     }
+
     add_hull_to_js9(shull, hullOpts, display, stackLayer);
   }
 
@@ -409,6 +420,8 @@ function addRegionsToJS9(img, stack, regions) {
 // TODO: rework this now moving knowledge into JS
 //
 function addRegionToJS9(img, stack, winid, regions) {
+
+    alert("addRegionToJS( should not be called - see Doug");
 
   /* can have multiple components for a stack */
   let linestyle;
