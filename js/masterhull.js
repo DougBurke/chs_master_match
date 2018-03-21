@@ -71,17 +71,6 @@ function finalizeJS9Display(stack, cptnum, winid) {
   return function(img) {
     setupJS9(img, stack, cptnum, winid);
     addRegionsToJS9(img, stack, cptnum, winid);
-
-    /* TODO: updateJS9StackCounter(winid, out.nhulls); */
-/***
-    const out = addRegionToJS9(img, ensemble, masterid, stack, winid,
-                             data);
-    updateJS9StackCounter(winid, out.nhulls);
-    const opts = {display: img};
-    if (typeof(out.center) !== "undefined") {
-      goToRaDec(out.center, opts);
-    }
-***/
   };
 }
 
@@ -164,9 +153,11 @@ function setupJS9(img, stack, cptnum, winid) {
   // (an alternative would be to just cache the data and re-use
   // it).
   //
+  // This needs a lot of work.
   const reloadButton = document.getElementById(winid + 'ReloadRegions');
   if (reloadButton !== null) {
       // TODO: fix this (i.e. to match the latest behavior)
+      /***
       reloadButton
 	  .addEventListener("click", (e) => {
 		  JS9.RemoveRegions("all", opts);
@@ -178,6 +169,7 @@ function setupJS9(img, stack, cptnum, winid) {
 			  addRegionToJS9(img, stack, winid, data);
 		      });
 	      });
+      ***/
   }
 
   // This currently doesn't work very well, as it loses information
@@ -316,6 +308,7 @@ function addRegionsToJS9(img, stack, cptnum, regions) {
                   changeable: false,
                   tags: 'stack'};
 
+  let ra0 = undefined, dec0 = undefined;
   for (let shull of stackhulls) {
 
     // linestyle: solid for mancode is 0, otherwise
@@ -329,6 +322,8 @@ function addRegionsToJS9(img, stack, cptnum, regions) {
     //
     if (shull.component == cptnum) {
       hullOpts.color = 'orange';
+      ra0 = shull.ra0;
+      dec0 = shull.dec0;
     } else {
       hullOpts.color = '#cc3333'; // a red-ish color
     }
@@ -370,9 +365,6 @@ function addRegionsToJS9(img, stack, cptnum, regions) {
     hullOpts.changeable = false;
   }
 
-  let ras = [];
-  let decs = []
-
   const origOpts = Object.assign({}, hullOpts);
   origOpts.color = 'white';
   origOpts.strokeDashArray = [3, 3];
@@ -380,106 +372,14 @@ function addRegionsToJS9(img, stack, cptnum, regions) {
   for (let hull of masterhull.wcs) {
     add_hull_to_js9(hull, origOpts, display, originalLayer);
     add_hull_to_js9(hull, hullOpts, display, masterLayer);
-    ras.push(hull.ra0);
-    decs.push(hull.dec0);
   }
 
-  // Pick the "middle" point if there are multiple master hulls (e.g. QA).
-  // This fails if the hulls straddle ra=0/360.
+  // Move to the center of the stack-level hull, if defined,
+  // rather than the center of the master hull.
   //
-  let ra0 = 0;
-  let dec0 = 0;
-  if (ras.length > 1) {
-    ra0 = 0.5 + (Math.min(...ras) + Math.max(...ras));
-    dec0 = 0.5 + (Math.min(...decs) + Math.max(...decs));
-  } else {
-    ra0 = ras[0];
-    dec0 = decs[0];
+  if (typeof ra0 !== "undefined") {
+    goToRaDec({ra: ra0, dec: dec0}, display);
   }
-  goToRaDec({ra: ra0, dec: dec0}, display);
-}
-
-// The following is OLD
-//
-// Returns information useful when the display is being created,
-// but not when the regions are being re-created.
-//
-// TODO: rework this now moving knowledge into JS
-//
-function addRegionToJS9(img, stack, winid, regions) {
-
-    alert("addRegionToJS( should not be called - see Doug");
-
-  /* can have multiple components for a stack */
-  let linestyle;
-  let nstackhulls = 0;
-
-  const js9win = {display: img};
-
-  const hulls = [];
-  for (let i = 0; i < regions.stacks.length; i++) {
-    let shull = regions.stacks[i];
-    if (shull.stack === stack) {
-
-      hulls.push(shull);
-
-      /* experiment with making stack-level hulls "fixed", but
-         I can imagine this could be annoying at times (useful
-         at others) */
-      linestyle = [1];  /* how to change this */
-
-      add_hull_to_js9(shull,
-                      {color: 'orange',
-                       strokeDashArray: linestyle,
-                       changeable: false,
-                       tags: 'stack'},
-                      js9win);
-
-      nstackhulls += 1;
-    }
-  }
-
-  // Ensure that the store is updated
-  if (hulls.length > 0) {
-    settings.regionstore[stack] = hulls;
-  } else {
-    delete settings.regionstore[stack];
-  }
-
-  /*
-   * Add master hull last (so it appears on top).
-   * Trying to add the right level of edit-ability to the polygon.
-   *
-   * Note that points can be moved and deleted even with these options
-   * set.
-   */
-
-  if (typeof regions.master !== "undefined") {
-
-    add_hull_to_js9(regions.master,
-                    {movable: false,
-                     rotatable: false,
-                     resizable: false,  // do we want this true?
-                     tags: 'master'},
-                    js9win);
-
-    settings.regionstore.master = [regions.master];
-  } else {
-    delete settings.regionstore.master;
-  }
-
-  const out = {nhulls: nstackhulls};
-  if (typeof(regions.center) !== "undefined") {
-    out.center = regions.center;
-  }
-  return out;
-}
-
-// Add the number of stacks to the JS9 window.
-function updateJS9StackCounter(winid, n) {
-  document.getElementById(winid + 'stackid')
-    .innerHTML += "<span style='float: right;'>Stack hulls: " +
-                  n.toString() + "</span>";
 }
 
 /*

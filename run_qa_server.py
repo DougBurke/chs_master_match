@@ -23,7 +23,7 @@ Things to do
 
   These two are almost done; need to remove or change the behavior of the
   reload region button, then can remove/clean up the region endpoint
-  and need to send in the hull centeres for the master hulls
+  and need to send in the hull centers for the master hulls
 
   Need to start labelling the master hulls (for when there are qa cases)
   so that can delete a single hull.
@@ -88,6 +88,8 @@ try:
 except ImportError:
     sys.stderr.write("Needs crates!\n")
     sys.exit(1)
+
+import chs_utils as utils
 
 
 def log(msg, level='LOG'):
@@ -1533,6 +1535,14 @@ def create_master_hull_page(env,
 
     # What about the stack-level hull polygons?
     #
+    # Note that we include the center of the polygon,
+    # calculated from its SKY coordinate values but converted
+    # to RA and Dec. I know I have this code somewhere, but
+    # "re-invent" it. Oh darn: at this point I don't easily
+    # have the SKY coordinates, so going to hack it with the
+    # equatorial coordinates (including a hack to deal with
+    # ra=0/360).
+    #
     stack_polys = {}
     for key in ebands_by_component.keys():
 
@@ -1562,15 +1572,29 @@ def create_master_hull_page(env,
                 stklbl = stk
 
             slabel = '{}.{:02d}'.format(stklbl, cpt)
+
         try:
             store = stack_polys[stk]
         except KeyError:
             store = []
             stack_polys[stk] = store
 
+        # guestimates crossover limits
+
+        sx = np.asarray(sra)
+        sy = np.asarray(sdec)
+        if (sx.min() < 20.0) and (sx.max() > 340):
+            s0 = 400
+        else:
+            s0 = 0
+
+        ra0, dec0 = utils.polygon_centroid(sx + s0, sy)
+        ra0 -= s0
+
         shull = {'stack': stk, 'component': cpt,
                  'label': slabel,
                  'ra': sra, 'dec': sdec,
+                 'ra0': ra0, 'dec0': dec0,
                  'regstr': regstr}
         try:
             shull['mancode'] = mancode_by_component[key]

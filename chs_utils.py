@@ -443,3 +443,45 @@ def read_master_hulls(chsfile):
                 'revision': cr.get_key_value('CHSVER')}
 
     return hullmatch, hulllist, metadata
+
+
+def polygon_centroid(xs, ys):
+    """Return the centroid of the polygon.
+
+    Parameters
+    ----------
+    xs, ys : NumPy array
+        The vertexes of the polygon, which is assumed to be closed
+        (i.e. xs[0] == xs[-1], ys[0] == ys[-1]). The arrays must
+        have the same length and contain at least 4 points.
+
+    Returns
+    -------
+    x0, y0 : float
+        The centroid of the polygon, calculated using [1]_.
+
+    References
+    ----------
+
+    .. [1] https://en.wikipedia.org/wiki/Centroid#Centroid_of_a_polygon
+
+    """
+
+    # use j to mean i + 1
+    #
+    xi = xs[:-1]
+    xj = xs[1:]
+    yi = ys[:-1]
+    yj = ys[1:]
+
+    # Note that I am not simplifying the constants here as the
+    # reduction in exection time should not be significant.
+    #
+    term = xi * yj - xj * yi
+    area = term.sum() / 2.0
+    denom = 6 * area
+
+    cx = ((xi + xj) * term).sum() / denom
+    cy = ((yi + yj) * term).sum() / denom
+
+    return cx, cy
