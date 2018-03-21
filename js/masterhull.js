@@ -91,6 +91,41 @@ const convexLayer = 'convex';
 const originalLayer = 'original';
 const masterLayer = 'regions';
 
+// Change the blurring for the data displayed in the JS9 instance.
+//
+function blurData(newval, opts) {
+  JS9.GaussBlurData(newval, opts);
+}
+
+// Change the binning for the data displayed in the JS9 instance.
+//
+// The usability of this is limited, since it is not easy to find out
+// the current settings (i.e. just replace the binning, say). Eric is
+// on the case.
+//
+function binData(newval, sigma0, opts) {
+  // What is the current position - I am not too bothered
+  // if I do not calculate the exact center, as there is
+  // an effective zoom in/out going on here due to the
+  // change in binning - but let's see if this is visually
+  // confusing (the issue is if I am really calculating the
+  // center of the image here).
+  //
+  const idata = JS9.GetImageData(false, opts);
+
+  // This does not seem to be working as intended!
+  const wcs = JS9.PixToWCS(idata.width / 2, idata.height / 2, opts);
+
+  JS9.DisplaySection({bin: newval}, opts);
+
+  // Could perhaps just jump to the master hull
+  // goToRaDec(wcs, opts);  not working well
+
+  // reset the blur button to 0 since rebinning removes
+  // the blurring automatically
+  sigma0.checked = true;
+}
+
 // Customize the JS9 display window
 //
 // winid is the base HTML id of the "light window" containing
@@ -115,7 +150,7 @@ function setupJS9(img, stack, cptnum, winid) {
   let btns = container.getElementsByClassName("sigma");
   for (let i = 0; i < btns.length; i++) {
     btns[i].addEventListener("change", (e) => {
-      JS9.GaussBlurData(e.target.value, opts);
+      blurData(e.target.value, opts);
     });
   }
 
@@ -124,27 +159,7 @@ function setupJS9(img, stack, cptnum, winid) {
   btns = container.getElementsByClassName("binsize");
   for (let i = 0; i < btns.length; i++) {
     btns[i].addEventListener("change", (e) => {
-
-      // What is the current position - I am not too bothered
-      // if I do not calculate the exact center, as there is
-      // an effective zoom in/out going on here due to the
-      // change in binning - but let's see if this is visually
-      // confusing (the issue is if I am really calculating the
-      // center of the image here).
-      //
-      const idata = JS9.GetImageData(false, opts);
-
-      // This does not seem to be working as intended!
-      const wcs = JS9.PixToWCS(idata.width / 2, idata.height / 2, opts);
-
-      JS9.DisplaySection({bin: e.target.value}, opts);
-
-      // Could perhaps just jump to the master hull
-      // goToRaDec(wcs, opts);  not working well
-
-      // reset the blur button to 0 since rebinning removes
-      // the blurring automatically
-      sigma0.checked = true;
+      binData(e.target.value, sigma0, opts);
     });
   }
 
