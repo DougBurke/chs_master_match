@@ -454,6 +454,131 @@ function addRegionsToJS9(img, stack, cptnum, regions) {
   }
 }
 
+function blur_html(id) {
+  const name = id + "sigma";
+  let html = "<div class='blur'><span>Blur</span>";
+  const sigmas = [0, 1, 2, 3, 4];
+  for (let i = 0; i < sigmas.length; i++) {
+    /* need to have label after the input for the CSS */
+    const sigma = sigmas[i].toString();
+    var l = id + 'sigma' + sigma;
+    html += "<input class='sigma' name='" + name + "' type='radio' ";
+    html += "id='" + l + "' value='" + sigma + "'"
+    if (i === 0) { html += " checked"; }
+    html += ">";
+    html += "<label for='" + l + "'>" + sigma + "</label>";
+  }
+  html += "</div>";
+  return html;
+}
+
+function bin_html(stack, id) {
+  const all_bins = [1, 2, 4, 8, 16, 32, 64, 128];
+  let def_binsize, def_start;
+  if (stack.startsWith('hrc')) {
+    def_binsize = 64;
+    def_start = 1;
+  } else {
+    def_binsize = 8;
+    def_start = 0;
+  }
+  const def_bins = all_bins.slice(def_start, def_start + 7);
+
+  const name = id + "binsize";
+  let html = "<div class='rebin'><span>Bin</span>";
+  for (let i = 0; i < def_bins.length; i++) {
+    const binsize = def_bins[i].toString();
+    const l = id + 'binsize' + binsize;
+    html += "<input class='binsize' name='" + name + "' type='radio' ";
+    html += "id='" + l + "' value='" + binsize + "'";
+    if (def_bins[i] === def_binsize) {
+      html += " checked";
+    }
+
+    html += ">";
+    html += "<label for='" + l + "'>" + binsize + "</label>";
+  }
+  html += "</div>";
+  return html;
+}
+
+function zoom_html() {
+  let html = "<span class='zoom'>";
+  /***
+  html += "Zoom: ";
+  html += "<button class='zoomin'>In</button>";
+  html += "<button class='zoomout'>Out</button>";
+  ***/
+  html += "<button class='zoomin'>+</button>";
+  html += "<button class='zoomout'>-</button>";
+  html += "</span>";
+  return html;
+}
+
+function panner_html(id) {
+  let html = "<span class='panner'>"; // "Toggle: ";
+  html += "<button id='" + id + "ShowPanner'>Panner</button>";
+  html += "</span>";
+  return html;
+}
+
+function psf_html(stack, id) {
+  const psfs = settings.regionstore.stackpsfs[stack];
+  if (typeof psfs === "undefined") { return ""; }
+
+  let html = "<span class='colorize'>PSF: ";
+  html += "<select id='" + id + "PSFColor'>";
+  for (const newopt of ['hide', 'yellow', 'white', 'black', 'red',
+  			    'orange', 'cyan', 'blue', 'brown']) {
+  	  html += "<option value='" + newopt + "'";
+  	  if (newopt === 'yellow') {
+  	      html += " selected";
+  	  }
+  	  html += ">" + newopt + "</option>";
+  }
+
+  html += "</select>";
+  html += "</span>";
+
+  return html;
+}
+
+function band_html(band, id) {
+  if (band === "w") { return ""; }
+
+  let html = "<span class='bandchoice'>Band: ";
+  html += "<select id='" + id + "BandChoice'>";
+
+  for (const bandval of ['b', 'u', 's', 'm', 'h']) {
+  	  html += "<option value='" + bandval + "'";
+  	  if (bandval === band) {
+  	      html += " selected";
+  	  }
+  	  html += ">" + bandval + "</option>";
+  }
+
+  html += "</select>";
+  html += "</span>";
+  
+  return html;
+}
+
+function save_html(id) {
+  let html = "<span class='save'>";
+  html += "<button id='" + id;
+  html += "SaveMasters'>Save</button>";
+  html += "</span>";
+  return html;
+}
+
+function reload_html(id) {
+  let html = "<span class='reload'>";
+  html += "<button id='" + id;
+  html += "ReloadMasters'>Reload</button>";
+  html += "</span>";
+  return html;
+}
+
 /*
  * HTML code for the JS9 display.
  *
@@ -470,107 +595,28 @@ function js9_display_html(stack, stacknum, cptnum, band, id) {
 
   html += "<div class='useropts'>";
 
-  html += "<div class='buttonopts'>";
-  let name = id + "sigma";
-  html += "<div class='blur'><span>Blur</span>";
-  const sigmas = [0, 1, 2, 3, 4];
-  for (let i = 0; i < sigmas.length; i++) {
-    /* need to have label after the input for the CSS */
-    const sigma = sigmas[i].toString();
-    var l = id + 'sigma' + sigma;
-    html += "<input class='sigma' name='" + name + "' type='radio' ";
-    html += "id='" + l + "' value='" + sigma + "'"
-    if (i === 0) { html += " checked"; }
-    html += ">";
-    html += "<label for='" + l + "'>" + sigma + "</label>";
-  }
-  html += "</div>"; // class=blur
+  html += "<div class='kitchensink'>";
 
-  const all_bins = [1, 2, 4, 8, 16, 32, 64, 128];
-  let def_binsize, def_start;
-  if (stack.startsWith('hrc')) {
-    def_binsize = 64;
-    def_start = 1;
-  } else {
-    def_binsize = 8;
-    def_start = 0;
-  }
-  const def_bins = all_bins.slice(def_start, def_start + 7);
-
-  name = id + "binsize";
-  html += "<div class='rebin'><span>Bin</span>";
-  for (let i = 0; i < def_bins.length; i++) {
-    const binsize = def_bins[i].toString();
-    const l = id + 'binsize' + binsize;
-    html += "<input class='binsize' name='" + name + "' type='radio' ";
-    html += "id='" + l + "' value='" + binsize + "'";
-    if (def_bins[i] === def_binsize) {
-      html += " checked";
-    }
-
-    html += ">";
-    html += "<label for='" + l + "'>" + binsize + "</label>";
-  }
-  html += "</div>";  // class=rebin
-  html += "</div>";  // class=buttonopts
-
+  // Have the "always-have" options first, and the optional
+  // ones last.
   /*** not got everything working yet
-  html += "<div class='save'>";
-  html += "<button id='" + id;
-  html += "SaveMasters'>Save</button>";
-  html += "</div>";
-
-  html += "<div class='reload'>";
-  html += "<button id='" + id;
-  html += "ReloadMasters'>Reload</button>";
-  html += "</div>";
+  html += save_html(id);
+  html += reload_html(id);
   ***/
 
-  if (band !== "w") {
-      html += "<div class='bandchoice'>Band: ";
-      html += "<select id='" + id + "BandChoice'>";
+  html += band_html(band, id);
+  html += psf_html(stack, id);
 
-      for (const bandval of ['b', 'u', 's', 'm', 'h']) {
-	  html += "<option value='" + bandval + "'";
-	  if (bandval === band) {
-	      html += " selected";
-	  }
-	  html += ">" + bandval + "</option>";
-      }
+  html += "</div>"; // class=kitchensink
 
-      html += "</select>";
-      html += "</div>";
-  }
-
-  const psfs = settings.regionstore.stackpsfs[stack];
-  if (typeof psfs !== "undefined") {
-      html += "<div class='colorize'>PSF: ";
-      html += "<select id='" + id + "PSFColor'>";
-      for (const newopt of ['hide', 'yellow', 'white', 'black', 'red',
-			    'orange', 'cyan', 'blue', 'brown']) {
-	  html += "<option value='" + newopt + "'";
-	  if (newopt === 'yellow') {
-	      html += " selected";
-	  }
-	  html += ">" + newopt + "</option>";
-      }
-
-      html += "</select>";
-      html += "</div>";
-
-  }
-
-
-  html += "<div class='zoom'>Zoom: ";
-  html += "<button class='zoomin'>In</button>";
-  html += "<button class='zoomout'>Out</button>";
+  html += "<div class='buttonopts'>";
+  html += blur_html(id);
+  html += bin_html(stack, id);
+  html += zoom_html();
+  html += panner_html(id);
   html += "</div>";
 
-  html += "<div class='showable'>"; // "Toggle: ";
-  html += "<button id='" + id + "ShowPanner'>Panner</button>";
-  html += "</div>";
-
-  html += "</div>";
+  html += "</div>"; // class=useropts
 
   html += "<div class='JS9Menubar' id='" + id + "Menubar'></div>";
   html += "<div class='JS9' id='" + id + "'></div>'";

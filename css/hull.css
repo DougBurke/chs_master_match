@@ -92,9 +92,27 @@ select + table {
   padding-top: 0.2em;
 }
 
-.reload , .zoom {
-  float: right;
+.panner {
+  padding-left: 0.2em;
 }
+
+.zoom button , .panner button {
+  background-color: rgba(217, 83, 79, 0.6);  /* red-ish */
+}
+
+.kitchensink span + span {
+  padding-left: 0.2em;
+}
+
+.kitchensink {
+  padding-bottom: 0.2em;
+}
+
+/***
+.reload , .zoom , .panner , .colorize , .bandchoice {
+  float: left;
+}
+***/
 
 /* The "label" for the button bar */
 .rebin span , .blur span {
@@ -136,6 +154,11 @@ div.useropts input[type='radio']:checked + label {
   border: 1px solid rgb(212, 63, 58);
   color: black;
 }
+
+div.JS9Menubar {
+  clear: both;
+}
+
 
 .hulllink {
   border: 1px solid rgb(212, 63, 58);
