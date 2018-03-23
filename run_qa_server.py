@@ -1122,6 +1122,42 @@ def save_master(userdir, data):
         fh.write(json.dumps(store))
 
 
+def save_master_poly(userdir, data):
+    """Save the masterhull polygon(s).
+
+    Parameters
+    ----------
+    userdir : str
+        The location for the user-stored data.
+    data : dict
+        The JSON dictionary containing the elements to write out.
+    """
+
+    ensemble = data['ensemble']
+    version = data['revision']  # this is in string form, 0 padded
+    masterid = data['masterid']
+
+    outdir = os.path.join(userdir, ensemble)
+    if os.path.exists(outdir):
+        if not os.path.isdir(outdir):
+            raise IOError("Exists but not a directory! {}".format(outdir))
+    else:
+        os.mkdir(outdir)
+
+    outname = 'poly.{}.{:03d}.v{}.json'.format(ensemble,
+                                               masterid,
+                                               version)
+    outfile = os.path.join(outdir, outname)
+
+    store = {"ensemble": ensemble,
+             "masterid": masterid,
+             "lastmodified": time.asctime(),
+             "polygons": data['polygons'],
+             "revision": version}
+    with open(outfile, 'w') as fh:
+        fh.write(json.dumps(store))
+
+
 def apply_template(env, tmplname, args):
 
     try:
@@ -1846,6 +1882,7 @@ class CHSHandler(BaseHTTPRequestHandler):
             savefunc = {'save/summary': save_summary,
                         'save/ensemble': save_ensemble,
                         'save/master': save_master,
+                        'save/masterpoly': save_master_poly,
                         'save/datatable': save_datatable
                         }[path]
         except KeyError:

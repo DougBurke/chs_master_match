@@ -197,7 +197,7 @@ function setupJS9(img, stack, cptnum, winid) {
   if (saveButton !== null) {
     saveButton
       .addEventListener("click",
-			(e) => { alert("TO BE WRITTEN"); });
+			(e) => { saveMasters(); });
   }
 
   // Go back to the last-saved version of the master hull.
@@ -957,6 +957,44 @@ function broadcastMasterDelete(img, action) {
   // Delete the convex-hull version in the original window.
   JS9.RemoveShapes(convexLayer, 'master', {display: js9win});
 
+}
+
+function saveMasters() {
+  let httpRequest = new XMLHttpRequest();
+  if (!httpRequest) {
+      alert("Unable to create a XMLHttpRequest!");
+      return;
+  }
+
+  // for now just store the hull itself, and not the convex hull
+  // version.
+  //
+  const store = {ensemble: settings.ensemble,
+		 revision: settings.revstr,
+		 masterid: settings.masterid,
+		 polygons: masterhulls_raw};
+
+  // Add the spinner to the whole page
+  //
+  let body = document.getElementsByTagName("body")[0];
+  let spinner = new Spinner(spinopts);
+  spinner.spin(body);
+
+  httpRequest.addEventListener("load", function() {
+  });
+  httpRequest.addEventListener("error", function() {
+      alert("Unable to save data!");
+  });
+  httpRequest.addEventListener("abort", function() {
+      alert("Unable to save data!");
+  });
+  httpRequest.addEventListener("loadend", function() {
+      spinner.stop();
+  });
+
+  httpRequest.open('POST', '/save/masterpoly');
+  httpRequest.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+  httpRequest.send(JSON.stringify(store));
 }
 
 // Save user selections
