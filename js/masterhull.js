@@ -53,10 +53,45 @@ var masterhulls = [];
 // to JS9 commands to determine the window to use.
 // wcs contains ra and dec fields.
 //
-function goToRaDec(wcs, opts) {
+function goToRaDec(wcs, opts, debug=true) {
   const pix = JS9.WCSToPix(wcs.ra, wcs.dec, opts);
-  // console.log("-> " + wcs.ra + " " + wcs.dec + " : " + pix.x + " " + pix.y);
+  if (debug) {
+      console.log("-> " + wcs.ra + " " + wcs.dec + " : " + pix.x + " " + pix.y);
+  }
   JS9.SetPan(pix.x, pix.y, opts);
+}
+
+// This is a wrapper around JS9.DisplaySection which restores the
+// current pan position after a change.
+//
+function changeJS9Display(stack, cpt, section, opts) {
+
+  // What is the location of the center? The -1 was found by
+  // trial and error and presumbly should not be necessary.
+  //
+  // With the addition of the conversion to WCS then it may not be
+  // necessary (since there appears to be a slight shift anyway),
+  // but leave in for now.
+  const pix = JS9.GetPan(opts);
+  const x = pix.x - 1;
+  const y = pix.y - 1;
+
+  // Convert to WCS in case the binning is changed
+  const wcs = JS9.PixToWCS(x, y, opts);
+
+  const key = toKey(stack, cpt);
+  const blur = blurVal[key];
+
+  const args = Object.assign({}, section);
+  args.ondisplaysection = (im) => {
+      const newpix = JS9.WCSToPix(wcs.ra, wcs.dec, opts);
+      JS9.SetPan(newpix.x, newpix.y, opts);
+      if (typeof blur !== "undefined" ) {
+        JS9.GaussBlurData(blur, opts);
+      }
+  };
+  JS9.DisplaySection(args, opts);
+
 }
 
 // Finalize the widgets in the window and add the regions.
@@ -86,50 +121,30 @@ const convexLayer = 'convex';
 const originalLayer = 'original';
 const masterLayer = 'regions';
 
+// Need a dictionary key for stack,cpt, so convert to
+// a string.
+//
+function toKey(stack, cpt) {
+  return  stack + "." + cpt.toString();
+}
+
 // Change the blurring for the data displayed in the JS9 instance.
 //
-function blurData(newval, opts) {
+// We record the value of the blurring so that it can be restored
+// when the bin/band/... are changed, but this relies on the blur value
+// *only* being changed by our button and not the JS9 menu item.
+//
+let blurVal = {};
+function blurData(stack, cpt, newval, opts) {
+  const key = toKey(stack, cpt);
+  blurVal[key] = newval;
   JS9.GaussBlurData(newval, opts);
 }
 
 // Change the binning for the data displayed in the JS9 instance.
 //
-// The usability of this is limited, since it is not easy to find out
-// the current settings (i.e. just replace the binning, say). Eric is
-// on the case.
-//
-function binData(stack, cpt, newval, sigma0, opts) {
-
-  // reset the blur button to 0 since rebinning removes
-  // the blurring automatically
-  sigma0.checked = true;
-
-  // Could ensure either the current "center" of the image is
-  // restored, or the stack component.
-  //
-  /***
-  const idata = JS9.GetImageData(false, opts);
-  const wcs = JS9.PixToWCS(idata.width / 2, idata.height / 2, opts);
-  ***/
-
-  let wcs;
-  for (const shull of settings.regionstore.stackhulls[stack]) {
-      // have to use ==/!= and not ===/!== here
-      if (shull.component != cpt) { continue; }
-      wcs = {ra: shull.ra0, dec: shull.dec0};
-      break;
-  }
-
-  // the onrefresh change isn't getting the desired results; not
-  // sure what is going on.
-  //
-  let binopts = {bin: newval};
-  if (typeof wcs !== "undefined") {
-      binopts.onrefresh = (im) => { goToRaDec(wcs, opts); };
-  }
-
-  JS9.DisplaySection(binopts, opts);
-
+function binData(stack, cpt, newval, opts) {
+  changeJS9Display(stack, cpt, {bin: newval}, opts);
 }
 
 // Customize the JS9 display window
@@ -157,16 +172,14 @@ function setupJS9(img, stack, cptnum, winid) {
   let btns = container.getElementsByClassName("sigma");
   for (let i = 0; i < btns.length; i++) {
     btns[i].addEventListener("change", (e) => {
-      blurData(e.target.value, opts);
+      blurData(stack, cptnum, e.target.value, opts);
     });
   }
-
-  const sigma0 = document.getElementById(winid + "sigma0");
 
   btns = container.getElementsByClassName("binsize");
   for (let i = 0; i < btns.length; i++) {
     btns[i].addEventListener("change", (e) => {
-      binData(stack, cptnum, e.target.value, sigma0, opts);
+      binData(stack, cptnum, e.target.value, opts);
     });
   }
 
@@ -188,7 +201,7 @@ function setupJS9(img, stack, cptnum, winid) {
       //       machinery pick it up?
     reloadButton
       .addEventListener("click",
-			(e) => { addMasterHullToJS9({display: img}); });
+			(e) => { addMasterHullToJS9(opts); });
   }
 
   // This currently doesn't work very well, as it loses information
@@ -197,11 +210,10 @@ function setupJS9(img, stack, cptnum, winid) {
   const bandSelect = document.getElementById(winid + 'BandChoice');
   if (bandSelect !== null) {
       bandSelect
-	  .addEventListener("change", (e) => {
-		  const enfilter = band_to_filter(e.target.value);
-		  console.log("new filter = [" + enfilter + "]");
-		  JS9.DisplaySection({filter: enfilter}, opts);
-	      });
+	  .addEventListener("change",
+			    (e) => { changeFilter(stack, cptnum,
+						  e.target.value, opts);
+			    });
   }
 
   const psfColSelect = document.getElementById(winid + 'PSFColor');
@@ -301,6 +313,27 @@ function colorizePSFs(stack, winid, newcol) {
     JS9.ShowShapeLayer(psfLayer, true, {display: winid});
     JS9.ChangeShapes(psfLayer, "all", {color: newcol}, {display: winid});
   }
+}
+
+// Return the RA and Dec of the center of the display.
+// Or a value close to it. The idea is so that after a change we can
+// jump back to this location (ideally this would not be needed but
+// it's not clear if I'm doing something wrong or JS9 is or both).
+//
+function getApproxCenter(opts) {
+  const idata = JS9.GetImageData(false, opts);
+  const wcs = JS9.PixToWCS(idata.width / 2, idata.height / 2, opts);
+  return {ra: wcs.ra, dec: wcs.dec};
+}
+
+// Change the filter to the given band.
+//
+// The stack and cpt are sent in to allow the current
+// position to be retained, if desired.
+//
+function changeFilter(stack, cpt, band, opts) {
+  const enfilter = band_to_filter(band);
+  changeJS9Display(stack, cpt, {filter: enfilter}, opts);
 }
 
 // TODO: if we add a JS9 after editing (but not saved) in another
@@ -493,9 +526,6 @@ function js9_display_html(stack, stacknum, cptnum, band, id) {
   html += "</div>";
   ***/
 
-  /* hide until the behavior of DisplaySection has either been improved
-     or a way to get at the other information needed has been added to
-     the JS9 API
   if (band !== "w") {
       html += "<div class='bandchoice'>Band: ";
       html += "<select id='" + id + "BandChoice'>";
@@ -511,7 +541,6 @@ function js9_display_html(stack, stacknum, cptnum, band, id) {
       html += "</select>";
       html += "</div>";
   }
-  */
 
   const psfs = settings.regionstore.stackpsfs[stack];
   if (typeof psfs !== "undefined") {
