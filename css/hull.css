@@ -96,7 +96,8 @@ select + table {
   padding-left: 0.2em;
 }
 
-.zoom button , .panner button {
+.zoom button , .panner button , .save button , .reload button ,
+.colorize select , .bandchoice select {
   background-color: rgba(217, 83, 79, 0.6);  /* red-ish */
 }
 
