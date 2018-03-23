@@ -108,6 +108,10 @@ select + table {
   padding-bottom: 0.2em;
 }
 
+.colorize , .bandchoice {
+  float: right;
+}
+
 /***
 .reload , .zoom , .panner , .colorize , .bandchoice {
   float: left;

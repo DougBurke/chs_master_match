@@ -42,19 +42,34 @@ function setScaling(newScale) {
   changePage();
 }
 
+
+// See https://stackoverflow.com/a/10284006
+//
+function zip() {
+  var args = [].slice.call(arguments);
+  var shortest = args.length==0 ? [] : args.reduce((a,b) => {
+    return a.length < b.length ? a : b
+  });
+
+  return shortest.map(function(_,i){
+    return args.map((array) => {return array[i];});
+  });
+}
+
 // Store the current coordinates of the master hulls - i.e. the
 // user selection before saving. This is updatePage by
 // initialize and modified by handleRegionChange().
 //
-var masterhulls = [];
-
+var masterhulls_raw = [];
+var masterhulls_cnvx = [];
+var masterhulls_ids = {'original': [], 'master': [], 'convex': []};
 
 // pan to this position; opts is the argument to pass
 // to JS9 commands to determine the window to use.
 // wcs contains ra and dec fields.
 //
 function goToRaDec(wcs, opts, debug=true) {
-  const pix = JS9.WCSToPix(wcs.ra, wcs.dec, opts);
+  const pix = JS9.WCSToPix(wcs, opts);
   if (debug) {
       console.log("-> " + wcs.ra + " " + wcs.dec + " : " + pix.x + " " + pix.y);
   }
@@ -70,14 +85,14 @@ function changeJS9Display(stack, cpt, section, opts) {
   const pix = JS9.GetPan(opts);
 
   // Convert to WCS in case the binning is changed
-  const wcs = JS9.PixToWCS(pix.x, pix.y, opts);
+  const wcs = JS9.PixToWCS(pix, opts);
 
   const key = toKey(stack, cpt);
   const blur = blurVal[key];
 
   const args = Object.assign({}, section);
   args.ondisplaysection = (im) => {
-      const newpix = JS9.WCSToPix(wcs.ra, wcs.dec, opts);
+      const newpix = JS9.WCSToPix(wcs, opts);
       JS9.SetPan(newpix, opts);
       if (typeof blur !== "undefined" ) {
         JS9.GaussBlurData(blur, opts);
@@ -189,17 +204,14 @@ function setupJS9(img, stack, cptnum, winid) {
   //
   const reloadButton = document.getElementById(winid + 'ReloadMasters');
   if (reloadButton !== null) {
-      // TODO: this needs to change *all* connected JS9s
-      //       can we just send a changed event and let the existing
-      //       machinery pick it up?
     reloadButton
       .addEventListener("click",
-			(e) => { addMasterHullToJS9(opts); });
+			(e) => {
+			  setupMasters();
+			  addMasterHullToJS9(opts);
+			});
   }
 
-  // This currently doesn't work very well, as it loses information
-  // on any other bin/... operation that has been applied.
-  //
   const bandSelect = document.getElementById(winid + 'BandChoice');
   if (bandSelect !== null) {
       bandSelect
@@ -226,14 +238,15 @@ function setupJS9(img, stack, cptnum, winid) {
   // not img.
   //
   document.getElementById(winid + 'ShowPanner')
-      .addEventListener("click", (e) => { JS9.DisplayPlugin('panner',
-                                                            {display: winid}); });
+      .addEventListener("click",
+			(e) => { JS9.DisplayPlugin('panner',
+                                                   {display: winid}); });
 
   // Set up the layers. We have to base the options on
   // JS9.Regions.opts to get "sensible" behavior.
   //
   let layerOpts = Object.assign({}, JS9.Regions.opts);
-  for (let name of ['movable', 'rotatable', 'resizable', 'evented']) {
+  for (const name of ['movable', 'rotatable', 'resizable', 'evented']) {
     layerOpts[name] = false;
   }
 
@@ -246,11 +259,19 @@ function setupJS9(img, stack, cptnum, winid) {
   //
   // layerOpts.dowcsstr = true;
 
-  for (let name of [psfLayer, stackLayer, originalLayer, convexLayer]) {
+  for (const name of [psfLayer, stackLayer, originalLayer, convexLayer]) {
     JS9.NewShapeLayer(name, layerOpts, opts);
   }
 }
 
+// I'm adding in regions one at a time; the JS9 API lets you specify
+// multiple regions at once, so perhaps I would be better off
+// following that approach - i.e. create all the shapes for a
+// given layer and then add or change them.
+//
+// Or I should just grab the id returned by the AddShapes call so
+// that we can use that at a later time.
+//
 function add_hull_to_js9(hull, opts, win, layer='regions') {
 
   // Need to convert to image coordinates
@@ -264,9 +285,19 @@ function add_hull_to_js9(hull, opts, win, layer='regions') {
   if (typeof(hull.label) !== "undefined") {
     shape.text = hull.label;
   }
-  JS9.AddShapes(layer, shape, opts, win);
-  // JS9.AddRegions(shape, opts, win);
+  return JS9.AddShapes(layer, shape, opts, win);
 
+}
+
+
+function change_hull_in_js9(hull, layer, idval, win) {
+
+  // Need to convert to image coordinates
+  const pts = [];
+  for (let i = 0; i < hull.ra.length; i++) {
+    pts.push(JS9.WCSToPix(hull.ra[i], hull.dec[i], win));
+  }
+  JS9.ChangeShapes(layer, idval, {pts: pts}, win);
 }
 
 
@@ -308,17 +339,6 @@ function colorizePSFs(stack, winid, newcol) {
   }
 }
 
-// Return the RA and Dec of the center of the display.
-// Or a value close to it. The idea is so that after a change we can
-// jump back to this location (ideally this would not be needed but
-// it's not clear if I'm doing something wrong or JS9 is or both).
-//
-function getApproxCenter(opts) {
-  const idata = JS9.GetImageData(false, opts);
-  const wcs = JS9.PixToWCS(idata.width / 2, idata.height / 2, opts);
-  return {ra: wcs.ra, dec: wcs.dec};
-}
-
 // Change the filter to the given band.
 //
 // The stack and cpt are sent in to allow the current
@@ -334,7 +354,7 @@ function changeFilter(stack, cpt, band, opts) {
 //
 function addMasterHullToJS9(display) {
 
-    console.log("In addMasterHullToJS9");
+console.log("In addMasterHullToJS9");
 
   /*
    * TODO: the tag should act as a unique identifier
@@ -369,19 +389,79 @@ function addMasterHullToJS9(display) {
   origOpts.color = 'white';
   origOpts.strokeDashArray = [3, 3];
 
-  JS9.RemoveShapes(originalLayer, tagName, display);
-  JS9.RemoveShapes(masterLayer, tagName, display);
+  // Now that the convex-hull version appears in a different layer,
+  // the name can match the master name.
+  //
+  // const convexName = 'convex';
+  const convexName = 'master';
+
+  const convexOpts = {color: 'cyan',
+                      strokeDashArray: [5, 3],
+                      changeable: false,
+                      evented: false,
+                      tags: convexName};
+
+  // Can make the code responsive, so it can change rather than delete
+  // if necessary.
+  //
+  // JS9.RemoveShapes(originalLayer, tagName, display);
+  // JS9.RemoveShapes(masterLayer, tagName, display);
 
   // Note that we use the stored values for the original version
   // but the up-to-date version for the current layer.
   //
+  // TODO: need to have unique tags for the regions so can select
+  //       individual components?
+  //
+  // This code tries to work out what the "right" thing to do is
+  // - namely add a shape or change an existing one - which may
+  // end up being too complicated.
+  //
+  // Deleting stuff is also going to mess things up.
+  //
+  let polyid;
+  let idstore = masterhulls_ids.original;
+  idstore.splice(0);  // do we want this (ie clean out old values)?
+
   for (const hull of masterhull.wcs) {
-    add_hull_to_js9(hull, origOpts, display, originalLayer);
+      const rs = JS9.GetShapes(originalLayer, tagName, display);
+      if (rs.length == 0) {
+	  polyid = add_hull_to_js9(hull, origOpts, display, originalLayer);
+	  idstore.push(polyid);
+      } else {
+          // There should be no change, so no need to do anything here
+	  // JS9.ChangeShapes(originalLayer, tagName, {pts: hull}, display);
+      }
   }
 
-  for (const hull of masterhulls) {
-    add_hull_to_js9(hull, hullOpts, display, masterLayer);
+  idstore = masterhulls_ids.convex;
+  idstore.splice(0);
+  for (const hull of masterhulls_cnvx) {
+    const rs = JS9.GetShapes(convexLayer, convexName, display);
+    if (rs.length == 0) {
+      polyid = add_hull_to_js9(hull, convexOpts, display, convexLayer);
+      idstore.push(polyid);
+    } else {
+      // HARD CODE A SINGLE SHAPE
+      console.log("calling change shape - convex");
+      change_hull_in_js9(hull, convexLayer, idstore[0], display);
+    }
   }
+
+  idstore = masterhulls_ids.master;
+  idstore.splice(0);
+  for (const hull of masterhulls_raw) {
+    const rs = JS9.GetShapes(masterLayer, tagName, display);
+    if (rs.length == 0) {
+      polyid = add_hull_to_js9(hull, hullOpts, display, masterLayer);
+      idstore.push(polyid);
+    } else {
+      // HARD CODE A SINGLE SHAPE
+      console.log("calling change shape - master");
+      change_hull_in_js9(hull, masterLayer, idstore[0], display);
+    }
+  }
+
 }
 
 // Add the stack-level and master hull(s) to the JS9 window.
@@ -497,11 +577,6 @@ function bin_html(stack, id) {
 
 function zoom_html() {
   let html = "<span class='zoom'>";
-  /***
-  html += "Zoom: ";
-  html += "<button class='zoomin'>In</button>";
-  html += "<button class='zoomout'>Out</button>";
-  ***/
   html += "<button class='zoomin'>+</button>";
   html += "<button class='zoomout'>-</button>";
   html += "</span>";
@@ -592,10 +667,8 @@ function js9_display_html(stack, stacknum, cptnum, band, id) {
 
   // Have the "always-have" options first, and the optional
   // ones last.
-  /*** not got everything working yet
   html += save_html(id);
   html += reload_html(id);
-  ***/
 
   html += band_html(band, id);
   html += psf_html(stack, id);
@@ -728,7 +801,7 @@ function broadcastMasterUpdate(img, action) {
   let chull_sky = window.convexHull(action.pts);
   let chull_eqpos = [];
   for (let sky of chull_sky) {
-    chull_eqpos.push(JS9.PixToWCS(sky.x, sky.y, baseWin));
+    chull_eqpos.push(JS9.PixToWCS(sky, baseWin));
   }
 
   // Now that the convex-hull version appears in a different layer,
@@ -775,7 +848,7 @@ function broadcastMasterUpdate(img, action) {
 
     // Do we have a convex hull already?
     // let rs = JS9.GetRegions(convexName, imname);
-    let rs = JS9.GetShapes(convexLayer, convexName, imname);
+    const rs = JS9.GetShapes(convexLayer, convexName, imname);
     if (rs.length === 0) {
       var ras = [];
       var decs = [];
@@ -788,7 +861,7 @@ function broadcastMasterUpdate(img, action) {
     } else {
       const hullpts = [];
       for (const wcs of chull_eqpos) {
-        hullpts.push(JS9.WCSToPix(wcs.ra, wcs.dec, imname));
+        hullpts.push(JS9.WCSToPix(wcs, imname));
       }
 
       // JS9.ChangeRegions(convexName, {pts: hullpts}, imname);
@@ -803,7 +876,7 @@ function broadcastMasterUpdate(img, action) {
       // Need to convert to image coordinates
       const pts = [];
       for (const wcs of action.wcspts) {
-        pts.push(JS9.WCSToPix(wcs.ra, wcs.dec, imname));
+        pts.push(JS9.WCSToPix(wcs, imname));
       }
 
       // JS9.ChangeRegions('master', {pts: pts}, imname);
@@ -817,16 +890,22 @@ function broadcastMasterUpdate(img, action) {
   }
 
   // Store the new polygon (in Equatorial coordinates) in the
-  // masterhulls global variable.
+  // masterhulls_raw and masterhulls_cnvx global variables.
   //
   // TODO: Handle multiple hulls properly
-  if (masterhulls.length > 1) {
+  if (masterhulls_raw.length > 1) {
       alert("INTERNAL ERROR: need to handle multiple hulls");
   }
-  masterhulls = [{ra: [], dec: []}];
-  for (let wcs of action.wcspts) {
-    masterhulls[0].ra.push(wcs.ra);
-    masterhulls[0].dec.push(wcs.dec);
+  masterhulls_raw = [{ra: [], dec: []}];
+  for (const wcs of action.wcspts) {
+    masterhulls_raw[0].ra.push(wcs.ra);
+    masterhulls_raw[0].dec.push(wcs.dec);
+  }
+
+  masterhulls_cnvx = [{ra: [], dec: []}];
+  for (const wcs of chull_eqpos) {
+    masterhulls_cnvx[0].ra.push(wcs.ra);
+    masterhulls_cnvx[0].dec.push(wcs.dec);
   }
 
 }
@@ -985,20 +1064,55 @@ function finalize() {
   }
 }
 
+// Copy the "saved" master hulls into the "current" master hulls.
+//
+function setupMasters() {
+  // Store away the current master hull settings for use by
+  // addMasterHullToJS9 and handleRegionChange.
+  //
+  const masterhull = settings.regionstore.masterhulls[settings.masterid];
+  masterhulls_raw = [];  // should not be needed
+  for (const hull of masterhull.wcs) {
+    masterhulls_raw.push(Object.assign({}, hull));
+  }
+
+  // I would like to assume that the hull is convex, so the coordinates
+  // could be copied into masterhulls_cnvx, but I don't want to enforce
+  // this until the user explicitly requests it. So, the masterhull
+  // may not be convex.
+  //
+  // The problem is that there is no image to convert the RA/Dec
+  // values to SKY, so I do not really want to convert to a convex
+  // hull here. Although perhaps I should since it shouldn't really
+  // matter too much (famous last words). The intention is that the
+  // convex hull will get recalculated before use, but we want
+  // something here just in case. Whether that is true is something
+  // we shall find out.
+  //
+  masterhulls_cnvx = [];
+  for (const hull of masterhull.wcs) {
+    const inpts = [];
+    for (let i = 0; i < hull.ra.length; i++) {
+      inpts.push({x: hull.ra[i], y: hull.dec[i]});
+    }
+    const outpts = window.convexHull(inpts);
+    const out = {ra: [], dec: []};
+    for (let i = 0; i < outpts.length; i++) {
+      out.ra.push(outpts[i].x);
+      out.dec.push(outpts[i].y);
+    }
+    masterhulls_cnvx.push(out);
+  }
+
+}
+
 // Set up the page
 
 function updatePage(json) {
 
   state = Object.assign({}, json);
 
-  // Store away the current master hull settings for use by
-  // addMasterHullToJS9 and handleRegionChange.
-  //
-  const masterhull = settings.regionstore.masterhulls[settings.masterid];
-  masterhulls = [];  // should not be needed
-  for (const hull of masterhull.wcs) {
-    masterhulls.push(Object.assign({}, hull));
-  }
+  setupMasters();
 
   // Do we need a handler for region changes?
   if (state.ensemble_status === "todo") {
