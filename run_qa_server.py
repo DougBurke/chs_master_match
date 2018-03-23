@@ -1517,8 +1517,10 @@ def create_master_hull_page(env,
         store['status'] = status
         store['basestack'] = basestk
 
+        # The proposed hull
+        #
         if nvertex > 0:
-            wcs = [eqpos_to_dict(eqpos, nvertex)]
+            wcs_orig = [eqpos_to_dict(eqpos, nvertex)]
         else:
             qafile = os.path.join(dname,
                                   'qa.{}.v{}.fits'.format(mid,
@@ -1540,14 +1542,39 @@ def create_master_hull_page(env,
                 out += "- see Doug!</p></body></html>"
                 return 404, out
 
-            wcs = []
+            wcs_orig = []
             for nvertex, eqpos in zip(qcr.NVERTEX.values,
                                       qcr.EQPOS.values):
-                wcs.append(eqpos_to_dict(eqpos, nvertex))
+                wcs_orig.append(eqpos_to_dict(eqpos, nvertex))
 
             qcr = None
 
-        store['wcs'] = wcs
+        store['wcs_orig'] = wcs_orig
+
+        # Has the user got their own version?
+        polyfile = os.path.join(userdir, ensemble,
+                                'poly.{}.{:03d}.v{}.json'.format(ensemble,
+                                                                 midval,
+                                                                 revstr))
+        if os.path.exists(polyfile):
+            jcts = read_json(polyfile)
+            if jcts is None:
+                errlog("polyfile is unreadable: {}".format(polyfile))
+        else:
+            jcts = None
+
+        if jcts is None:
+            store['wcs'] = wcs_orig
+        else:
+            # Hack the dict to replace unicode keys as this breaks
+            # things when converting back to JSON. Should this be
+            # in read_json?
+            #
+            out = []
+            for ps in jcts['polygons']:
+                out.append({'ra': ps['ra'], 'dec': ps['dec']})
+
+            store['wcs'] = out
 
     cr = None
     ds = None

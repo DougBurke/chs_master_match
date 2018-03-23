@@ -423,7 +423,8 @@ console.log("In addMasterHullToJS9");
   let idstore = masterhulls_ids.original;
   idstore.splice(0);  // do we want this (ie clean out old values)?
 
-  for (const hull of masterhull.wcs) {
+  // NOTE use of wcs_orig so we always see the proposed hull as the original one
+  for (const hull of masterhull.wcs_orig) {
       const rs = JS9.GetShapes(originalLayer, tagName, display);
       if (rs.length == 0) {
 	  polyid = add_hull_to_js9(hull, origOpts, display, originalLayer);
