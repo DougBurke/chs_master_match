@@ -42,18 +42,12 @@ function setScaling(newScale) {
   changePage();
 }
 
-// Store the region information for this *ensemble*; that is,
-// provide coordinates (WCS) for all master hulls and stacks.
+// Store the current coordinates of the master hulls - i.e. the
+// user selection before saving. This is updatePage by
+// initialize and modified by handleRegionChange().
 //
-// This allows the UI to then decide whether to show all this
-// information or not.
-//
-/***
-var regionstore = {
-  'masterhulls': {{ hull_store|safe }},
-  'stackhulls': {{ stack_polys|safe }}
-};
-***/
+var masterhulls = [];
+
 
 // pan to this position; opts is the argument to pass
 // to JS9 commands to determine the window to use.
@@ -155,6 +149,7 @@ function setupJS9(img, stack, cptnum, winid) {
   // Add handlers for the user buttons:
   //   - blur
   //   - rebin
+  //   - save region
   //   - reload region
   //   - zoom
   //
@@ -175,28 +170,25 @@ function setupJS9(img, stack, cptnum, winid) {
     });
   }
 
-  // When reloading the regions, delete all the existing ones
-  // as a precaution. The region info is reloaded from disk
-  // (an alternative would be to just cache the data and re-use
-  // it).
+  // Save the current version of the hull.
   //
-  // This needs a lot of work.
-  const reloadButton = document.getElementById(winid + 'ReloadRegions');
+  const saveButton = document.getElementById(winid + 'SaveMasters');
+  if (saveButton !== null) {
+    saveButton
+      .addEventListener("click",
+			(e) => { alert("TO BE WRITTEN"); });
+  }
+
+  // Go back to the last-saved version of the master hull.
+  //
+  const reloadButton = document.getElementById(winid + 'ReloadMasters');
   if (reloadButton !== null) {
-      // TODO: fix this (i.e. to match the latest behavior)
-      /***
-      reloadButton
-	  .addEventListener("click", (e) => {
-		  JS9.RemoveRegions("all", opts);
-		  $.ajax({url: '/regions/ensemble/' +
-			      settings.ensemble + '/' +
-			      settings.masterid.toString(),
-			      dataType: 'json'})
-		  .done((data, textStatus) => {
-			  addRegionToJS9(img, stack, winid, data);
-		      });
-	      });
-      ***/
+      // TODO: this needs to change *all* connected JS9s
+      //       can we just send a changed event and let the existing
+      //       machinery pick it up?
+    reloadButton
+      .addEventListener("click",
+			(e) => { addMasterHullToJS9({display: img}); });
   }
 
   // This currently doesn't work very well, as it loses information
@@ -311,6 +303,61 @@ function colorizePSFs(stack, winid, newcol) {
   }
 }
 
+// TODO: if we add a JS9 after editing (but not saved) in another
+//       JS9 then this show the edited version, not the saved one.
+//
+function addMasterHullToJS9(display) {
+
+    console.log("In addMasterHullToJS9");
+
+  /*
+   * TODO: the tag should act as a unique identifier
+   *       which will be useful when supporting QA cases
+   *       (when can have multiple hulls).
+   */
+  const masterhull = settings.regionstore.masterhulls[settings.masterid];
+  if (typeof masterhull === "undefined") {
+    alert("No master hull found!");
+    return;
+  }
+
+  if (masterhull.wcs.length === 0) {
+    console.log("We have no master hull information for " +
+                settings.ensemble + " " +
+		settings.masterid.toString() + "!");
+    return;
+  }
+
+  const tagName = 'master';
+  const hullOpts = {movable: false,
+		    rotatable: false,
+		    resizable: false,
+		    tags: tagName};
+
+  /* If this is a review page then don't let the user change the hull */
+  if (state.ensemble_status !== "todo") {
+    hullOpts.changeable = false;
+  }
+
+  const origOpts = Object.assign({}, hullOpts);
+  origOpts.color = 'white';
+  origOpts.strokeDashArray = [3, 3];
+
+  JS9.RemoveShapes(originalLayer, tagName, display);
+  JS9.RemoveShapes(masterLayer, tagName, display);
+
+  // Note that we use the stored values for the original version
+  // but the up-to-date version for the current layer.
+  //
+  for (const hull of masterhull.wcs) {
+    add_hull_to_js9(hull, origOpts, display, originalLayer);
+  }
+
+  for (const hull of masterhulls) {
+    add_hull_to_js9(hull, hullOpts, display, masterLayer);
+  }
+}
+
 // Add the stack-level and master hull(s) to the JS9 window.
 //
 // The PSF regions are drawn first (if available).
@@ -325,18 +372,18 @@ function addRegionsToJS9(img, stack, cptnum, regions) {
     return;
   }
 
-  let display = {display: img};
+  const display = {display: img};
 
   addPSFRegions(stack, display);
 
   let linestyle = [1];
-  let hullOpts = {color: 'orange',
-                  strokeDashArray: linestyle,
-                  changeable: false,
-                  tags: 'stack'};
+  const hullOpts = {color: 'orange',
+		    strokeDashArray: linestyle,
+		    changeable: false,
+		    tags: 'stack'};
 
   let ra0 = undefined, dec0 = undefined;
-  for (let shull of stackhulls) {
+  for (const shull of stackhulls) {
 
     // linestyle: solid for mancode is 0, otherwise
     // dotted.
@@ -364,42 +411,7 @@ function addRegionsToJS9(img, stack, cptnum, regions) {
     add_hull_to_js9(shull, hullOpts, display, stackLayer);
   }
 
-  /*
-   * TODO: the tag should act as a unique identifier
-   *       which will be useful when supporting QA cases
-   *       (when can have multiple hulls).
-   */
-  let masterhull = settings.regionstore.masterhulls[settings.masterid];
-  if (typeof masterhull === "undefined") {
-    alert("No master hull found!");
-    return;
-  }
-
-  if (masterhull.wcs.length === 0) {
-    console.log("We have no master hull information for " +
-                settings.ensemble + " " +
-		settings.masterid.toString() + "!");
-    return;
-  }
-
-  hullOpts = {movable: false,
-              rotatable: false,
-              resizable: false,
-              tags: 'master'};
-
-  /* If this is a review page then don't let the user change the hull */
-  if (state.ensemble_status !== "todo") {
-    hullOpts.changeable = false;
-  }
-
-  const origOpts = Object.assign({}, hullOpts);
-  origOpts.color = 'white';
-  origOpts.strokeDashArray = [3, 3];
-
-  for (let hull of masterhull.wcs) {
-    add_hull_to_js9(hull, origOpts, display, originalLayer);
-    add_hull_to_js9(hull, hullOpts, display, masterLayer);
-  }
+  addMasterHullToJS9(display);
 
   // Move to the center of the stack-level hull, if defined,
   // rather than the center of the master hull.
@@ -421,8 +433,9 @@ function js9_display_html(stack, stacknum, cptnum, band, id) {
       stacknum.toString() + ": " + stack +
       " cpt: " + cptnum.toString() + 
       " band: " + band +
-      "</span></div>" +
-    "<div class='useropts'>";
+      "</span></div>";
+
+  html += "<div class='useropts'>";
 
   html += "<div class='buttonopts'>";
   let name = id + "sigma";
@@ -438,7 +451,7 @@ function js9_display_html(stack, stacknum, cptnum, band, id) {
     html += ">";
     html += "<label for='" + l + "'>" + sigma + "</label>";
   }
-  html += "</div>";
+  html += "</div>"; // class=blur
 
   const all_bins = [1, 2, 4, 8, 16, 32, 64, 128];
   let def_binsize, def_start;
@@ -465,15 +478,20 @@ function js9_display_html(stack, stacknum, cptnum, band, id) {
     html += ">";
     html += "<label for='" + l + "'>" + binsize + "</label>";
   }
-  html += "</div>";
+  html += "</div>";  // class=rebin
   html += "</div>";  // class=buttonopts
 
-  /* hide for now
+  /*** not got everything working yet
+  html += "<div class='save'>";
+  html += "<button id='" + id;
+  html += "SaveMasters'>Save</button>";
+  html += "</div>";
+
   html += "<div class='reload'>";
   html += "<button id='" + id;
-  html += "ReloadRegions'>Reload Regions</button>";
+  html += "ReloadMasters'>Reload</button>";
   html += "</div>";
-  */
+  ***/
 
   /* hide until the behavior of DisplaySection has either been improved
      or a way to get at the other information needed has been added to
@@ -682,7 +700,7 @@ function broadcastMasterUpdate(img, action) {
     const owin = div.id.substring(1);
 
     const imname = {display: owin};
-    let hdl = JS9.GetImage(imname);
+    const hdl = JS9.GetImage(imname);
 
     // stop propogating the onchange signal
     hdl.params.xeqonchange = !hdl.params.xeqonchange;
@@ -693,7 +711,7 @@ function broadcastMasterUpdate(img, action) {
     if (rs.length === 0) {
       var ras = [];
       var decs = [];
-      for (let wcs of chull_eqpos) {
+      for (const wcs of chull_eqpos) {
         ras.push(wcs.ra);
         decs.push(wcs.dec);
       }
@@ -701,7 +719,7 @@ function broadcastMasterUpdate(img, action) {
                       imname, convexLayer);
     } else {
       const hullpts = [];
-      for (let wcs of chull_eqpos) {
+      for (const wcs of chull_eqpos) {
         hullpts.push(JS9.WCSToPix(wcs.ra, wcs.dec, imname));
       }
 
@@ -716,7 +734,7 @@ function broadcastMasterUpdate(img, action) {
 
       // Need to convert to image coordinates
       const pts = [];
-      for (let wcs of action.wcspts) {
+      for (const wcs of action.wcspts) {
         pts.push(JS9.WCSToPix(wcs.ra, wcs.dec, imname));
       }
 
@@ -728,6 +746,19 @@ function broadcastMasterUpdate(img, action) {
 
     // Ensure the regions layer is where the user action happens
     JS9.ActiveShapeLayer(masterLayer, imname);
+  }
+
+  // Store the new polygon (in Equatorial coordinates) in the
+  // masterhulls global variable.
+  //
+  // TODO: Handle multiple hulls properly
+  if (masterhulls.length > 1) {
+      alert("INTERNAL ERROR: need to handle multiple hulls");
+  }
+  masterhulls = [{ra: [], dec: []}];
+  for (let wcs of action.wcspts) {
+    masterhulls[0].ra.push(wcs.ra);
+    masterhulls[0].dec.push(wcs.dec);
   }
 
 }
@@ -891,6 +922,15 @@ function finalize() {
 function updatePage(json) {
 
   state = Object.assign({}, json);
+
+  // Store away the current master hull settings for use by
+  // addMasterHullToJS9 and handleRegionChange.
+  //
+  const masterhull = settings.regionstore.masterhulls[settings.masterid];
+  masterhulls = [];  // should not be needed
+  for (const hull of masterhull.wcs) {
+    masterhulls.push(Object.assign({}, hull));
+  }
 
   // Do we need a handler for region changes?
   if (state.ensemble_status === "todo") {
