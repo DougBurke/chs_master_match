@@ -58,7 +58,7 @@ function goToRaDec(wcs, opts, debug=true) {
   if (debug) {
       console.log("-> " + wcs.ra + " " + wcs.dec + " : " + pix.x + " " + pix.y);
   }
-  JS9.SetPan(pix.x, pix.y, opts);
+  JS9.SetPan(pix, opts);
 }
 
 // This is a wrapper around JS9.DisplaySection which restores the
@@ -66,18 +66,11 @@ function goToRaDec(wcs, opts, debug=true) {
 //
 function changeJS9Display(stack, cpt, section, opts) {
 
-  // What is the location of the center? The -1 was found by
-  // trial and error and presumbly should not be necessary.
-  //
-  // With the addition of the conversion to WCS then it may not be
-  // necessary (since there appears to be a slight shift anyway),
-  // but leave in for now.
+  // What is the location of the center?
   const pix = JS9.GetPan(opts);
-  const x = pix.x - 1;
-  const y = pix.y - 1;
 
   // Convert to WCS in case the binning is changed
-  const wcs = JS9.PixToWCS(x, y, opts);
+  const wcs = JS9.PixToWCS(pix.x, pix.y, opts);
 
   const key = toKey(stack, cpt);
   const blur = blurVal[key];
@@ -85,7 +78,7 @@ function changeJS9Display(stack, cpt, section, opts) {
   const args = Object.assign({}, section);
   args.ondisplaysection = (im) => {
       const newpix = JS9.WCSToPix(wcs.ra, wcs.dec, opts);
-      JS9.SetPan(newpix.x, newpix.y, opts);
+      JS9.SetPan(newpix, opts);
       if (typeof blur !== "undefined" ) {
         JS9.GaussBlurData(blur, opts);
       }
