@@ -61,6 +61,7 @@ var regionstore = {
 //
 function goToRaDec(wcs, opts) {
   const pix = JS9.WCSToPix(wcs.ra, wcs.dec, opts);
+  // console.log("-> " + wcs.ra + " " + wcs.dec + " : " + pix.x + " " + pix.y);
   JS9.SetPan(pix.x, pix.y, opts);
 }
 
@@ -103,27 +104,38 @@ function blurData(newval, opts) {
 // the current settings (i.e. just replace the binning, say). Eric is
 // on the case.
 //
-function binData(newval, sigma0, opts) {
-  // What is the current position - I am not too bothered
-  // if I do not calculate the exact center, as there is
-  // an effective zoom in/out going on here due to the
-  // change in binning - but let's see if this is visually
-  // confusing (the issue is if I am really calculating the
-  // center of the image here).
-  //
-  const idata = JS9.GetImageData(false, opts);
-
-  // This does not seem to be working as intended!
-  const wcs = JS9.PixToWCS(idata.width / 2, idata.height / 2, opts);
-
-  JS9.DisplaySection({bin: newval}, opts);
-
-  // Could perhaps just jump to the master hull
-  // goToRaDec(wcs, opts);  not working well
+function binData(stack, cpt, newval, sigma0, opts) {
 
   // reset the blur button to 0 since rebinning removes
   // the blurring automatically
   sigma0.checked = true;
+
+  // Could ensure either the current "center" of the image is
+  // restored, or the stack component.
+  //
+  /***
+  const idata = JS9.GetImageData(false, opts);
+  const wcs = JS9.PixToWCS(idata.width / 2, idata.height / 2, opts);
+  ***/
+
+  let wcs;
+  for (const shull of settings.regionstore.stackhulls[stack]) {
+      // have to use ==/!= and not ===/!== here
+      if (shull.component != cpt) { continue; }
+      wcs = {ra: shull.ra0, dec: shull.dec0};
+      break;
+  }
+
+  // the onrefresh change isn't getting the desired results; not
+  // sure what is going on.
+  //
+  let binopts = {bin: newval};
+  if (typeof wcs !== "undefined") {
+      binopts.onrefresh = (im) => { goToRaDec(wcs, opts); };
+  }
+
+  JS9.DisplaySection(binopts, opts);
+
 }
 
 // Customize the JS9 display window
@@ -159,7 +171,7 @@ function setupJS9(img, stack, cptnum, winid) {
   btns = container.getElementsByClassName("binsize");
   for (let i = 0; i < btns.length; i++) {
     btns[i].addEventListener("change", (e) => {
-      binData(e.target.value, sigma0, opts);
+      binData(stack, cptnum, e.target.value, sigma0, opts);
     });
   }
 
