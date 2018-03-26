@@ -9,6 +9,7 @@ Use
 
 """
 
+from collections import defaultdict
 import os
 
 import numpy as np
@@ -280,8 +281,7 @@ def draw_hulls_and_images(master_hull,
     dec_min -= axscale * ddec
     dec_max += axscale * ddec
 
-    # It's not worth reading in the whole event file/image if
-    # possible.
+    # Select just the region of interest to try and save memory.
     #
     sfilt = utils.make_spatial_filter_range(ra_min, ra_max,
                                             dec_min, dec_max)
@@ -378,7 +378,50 @@ def draw_hulls_and_images(master_hull,
                 'sqrt': sqrtwrapper,
                 'none': colors.Normalize}
 
-    # for stack_idx, stack in enumerate(stacks):
+    # Are these correct?
+    efilts = {'w': '',
+              'b': '[energy=500:7000]',
+              'u': '[energy=300:500]',
+              's': '[energy=500:1200]',
+              'm': '[energy=1200:2000]',
+              'h': '[energy=2000:7000]'}
+
+    # Work out the event file + VFS stacks to use before reading
+    # anything else, since this lets us cache the result, which may
+    # help out with really-large datasets (but only if the
+    # band matches).
+    #
+    # key = (stack, cpt), value = file name incl VFS
+    evt_name = {}
+
+    # keys = file name incl VFS, values = number of times
+    evt_count = defaultdict(int)
+
+    for hull_idx, shull in enumerate(stackhulls):
+
+        stack = shull['stack']
+        cpt = shull['component']
+        key = stack, cpt
+
+        evtfile = evtfiles[stack]
+
+        # What band to use?
+        #
+        bname = hulldata[key]['band']
+
+        if bname == 'w':
+            bspec = '[bin sky=::64]'
+        else:
+            bspec = '[bin sky=::8]'
+
+        efilt = efilts[bname]
+        iname = evtfile + efilt + sfilt + bspec
+
+        evt_name[key] = iname
+        evt_count[iname] += 1
+
+    evt_cache = {}
+
     for hull_idx, shull in enumerate(stackhulls):
 
         stack = shull['stack']
@@ -411,36 +454,31 @@ def draw_hulls_and_images(master_hull,
         # if evtscale == 'log10':
         #     iopts['threshold'] = [0, 2]
         #
-        evtfile = evtfiles[stack]
 
         # What band to use?
         #
         bname = hulldata[key]['band']
 
-        if bname == 'w':
-            bspec = '[bin sky=::64]'
-        else:
-            bspec = '[bin sky=::8]'
-
-        # Are these correct?
-        efilts = {'w': '',
-                  'b': '[energy=500:7000]',
-                  'u': '[energy=300:500]',
-                  's': '[energy=500:1200]',
-                  'm': '[energy=1200:2000]',
-                  'h': '[energy=2000:7000]'}
-
-        # Note that we read in the same data repeatedly for the cases
-        # when there are multiple hulls in the same stack, but it's
-        # not special casing this at present.
+        # Read in the date or grab it from the cache
         #
-        efilt = efilts[bname]
-        iname = evtfile + efilt + sfilt + bspec
-        try:
-            cr = pycrates.read_file(iname)
-        except IOError as e:
-            print("Unable to read {}".format(iname))
-            raise e
+        iname = evt_name[key]
+        if iname in evt_cache:
+            cr = evt_cache[iname]
+
+            evt_count[key] -= 1
+            if evt_count[key] < 1:
+                del evt_cache[iname]
+
+        else:
+            try:
+                cr = pycrates.read_file(iname)
+            except IOError as e:
+                print("Unable to read {}".format(iname))
+                raise e
+
+            # cache the result if we re-use it
+            if evt_count[key] > 1:
+                evt_cache[iname] = cr
 
         # could use the transfrom stored in the hullmap, but use
         # the one read in from the image for now.
@@ -612,6 +650,8 @@ def draw_hulls_and_images(master_hull,
 
             assert manadj is None
             manadj = hull['mancode'] != 0
+
+            # should probably break here
 
         assert manadj is not None
         if manadj:
