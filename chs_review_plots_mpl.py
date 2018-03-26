@@ -410,7 +410,7 @@ def draw_hulls_and_images(master_hull,
         bname = hulldata[key]['band']
 
         if bname == 'w':
-            bspec = '[bin sky=::64]'
+            bspec = '[bin sky=::32]'
         else:
             bspec = '[bin sky=::8]'
 
