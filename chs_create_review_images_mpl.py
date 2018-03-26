@@ -88,7 +88,8 @@ def read_qa_hulls(qadir, revision, master_id):
 
 
 def create_review_products(chsfile, outdir,
-                           mrgsrc3dir, stkevt3dir, stkfov3dir):
+                           mrgsrc3dir, stkevt3dir,
+                           stkfov3dir, xmdat3dir):
     """Create the review products.
 
     Parameters
@@ -97,11 +98,12 @@ def create_review_products(chsfile, outdir,
         The FITS file containing the master hull data.
     outdir : str
         The output directory, which may be created by the routine.
-    mrgsrc3dir, stkevt3dir, stkfov3dir : str
-        The directory names containing the mrgsrc3, evt3, and fov3
-        files for the stacks. The names must match
+    mrgsrc3dir, stkevt3dir, stkfov3dir, xmdat3dir : str
+        The directory names containing the mrgsrc3, evt3, fov3, and
+        xmdat3 files for the stacks. The names must match
         <stack>*<type>.fits[.gz] and there can only be one per stack
-        per type.
+        per type. The xmdat3 files are optional and are stored as
+        <stack>/<stack>N000_xmdat3.fits.
 
     Notes
     -----
@@ -198,6 +200,7 @@ def create_review_products(chsfile, outdir,
                                                 hullmatch[mid],
                                                 hullmap,
                                                 stkevt3dir,
+                                                xmdat3dir,
                                                 outdir,
                                                 ensemble,
                                                 ensemblemap,
@@ -250,10 +253,14 @@ if __name__ == "__main__":
     parser.add_argument("--stkfov3dir", type=str,
                         default="/data/L3/chs_master_match/input/stkfov3",
                         help="The stkfov3 directory: default %(default)s")
+    parser.add_argument("--xmdat3dir", type=str,
+                        default="/data/L3/chs_master_match/input/xmdat3",
+                        help="The xmdat3 directory: default %(default)s")
 
     args = parser.parse_args(sys.argv[1:])
 
     create_review_products(args.chsfile, args.outdir,
                            mrgsrc3dir=args.mrgsrc3dir,
                            stkevt3dir=args.stkevt3dir,
-                           stkfov3dir=args.stkfov3dir)
+                           stkfov3dir=args.stkfov3dir,
+                           xmdat3dir=args.xmdat3dir)

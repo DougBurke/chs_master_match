@@ -32,6 +32,7 @@ mpl.use('Agg', warn=False)
 
 import matplotlib.pyplot as plt
 from matplotlib import colors
+from matplotlib.patches import Ellipse
 
 
 def tr2wcs(tr_eqpos, tr_physical=None):
@@ -117,10 +118,102 @@ def filter_image(vals, x, y, poly):
     return np.asarray(out)
 
 
+def read_xmdat3(xmdat3dir, stack):
+    """Read xmdat3 PSF data, if available.
+
+    The xmdat3 files are assumed to be stored as
+       <xmdat3dir>/<stack>/<stack>N000_xmdat3.fits
+
+    Should I send in the ra/dec limits so that we can filter
+    on these (would miss those which are centered outside the
+    range but overlap)?
+
+    If the file is missing a message is logged.
+
+    Parameters
+    ----------
+    xmdat3dir : str
+        The directory containing the files.
+    stack : str
+        The stack name
+
+    Returns
+    -------
+    rval : list of regions or None
+        None if there is no xmdat3 file, otherwise a list
+        (which can be empty) of regions, which contain
+        'ra', 'dec', 'r0', 'r1', 'angle' (ra and dec are in
+        decimal degrees, r0 and r1 are in arcseconds, and angle
+        is in degrees).
+
+    """
+
+    infile = os.path.join(xmdat3dir, stack,
+                          '{}N000_xmdat3.fits'.format(stack))
+    if not os.path.isfile(infile):
+        print("LOG: no xmdat3 file {}".format(infile))
+        return None
+
+    try:
+        cr = pycrates.read_file(infile +
+                                "[cols ra,dec,psf_r0,psf_r1,psf_ang]")
+    except IOError:
+        print("LOG: unable to read XMDAT3 file {}".format(infile))
+        raise
+
+    out = []
+    for ra, dec, r0, r1, ang in zip(cr.ra.values,
+                                    cr.dec.values,
+                                    cr.psf_r0.values,
+                                    cr.psf_r1.values,
+                                    cr.psf_ang.values):
+        out.append({'ra': ra, 'dec': dec,
+                    'r0': r0, 'r1': r1, 'angle': ang})
+
+    return out
+
+
+def draw_xmdat3(regs, axis, transform,
+                edgecolor='white',
+                facecolor='none'):
+    """Draw on the PSF ellipses.
+
+    This approximates the ellipse, assuming that we are on a
+    tangent-plane projection and close to the tangent point.
+
+    Parameters
+    ----------
+    regs : output of read_xmdat3
+        If None then nothing is done.
+    axis
+        The axis to add the patches to.
+    transform
+        The WCS axis transform.
+    edgecolor, facecolor : str
+        Passed through to the ellipse.
+
+    """
+
+    if regs is None:
+        return
+
+    for r in regs:
+        # Need to convert radii into diameters and then from arcsec
+        # into degrees.
+        #
+        e = Ellipse(xy=(r['ra'], r['dec']),
+                    width=r['r0'] / 1800.0, height=r['r1'] / 1800.0,
+                    angle=-r['angle'],
+                    transform=transform,
+                    facecolor=facecolor, edgecolor=edgecolor)
+        axis.add_patch(e)
+
+
 def draw_hulls_and_images(master_hull,
                           stackhulls,
                           hullmap,
                           stkevt3dir,
+                          xmdat3dir,
                           outdir,
                           ensemble,
                           ensemblemap,
@@ -156,6 +249,8 @@ def draw_hulls_and_images(master_hull,
         are those returned by read_hulls_from_mrgsrc3.
     stkevt3dir : str
         The location of the stkevt3 files.
+    xmdat3dir : str
+        The location of the xmdat3 files (per stack, optional).
     outdir : str
         The output directory, which must exist.
     ensemble : str
@@ -230,6 +325,13 @@ def draw_hulls_and_images(master_hull,
             key = stack, hull['component']
             assert key not in hulldata
             hulldata[key] = hull
+
+    # Do we have any xmdat3 files for these stacks? We want to
+    # store the None to mark stacks as having no data.
+    #
+    xmdat3map = {}
+    for stack in stacks:
+        xmdat3map[stack] = read_xmdat3(xmdat3dir, stack)
 
     # Need limits for determining how much of the event file
     # to read in.
@@ -390,6 +492,12 @@ def draw_hulls_and_images(master_hull,
     # anything else, since this lets us cache the result, which may
     # help out with really-large datasets (but only if the
     # band matches).
+    #
+    # TODO: look at this
+    # Note that this cache is fairly pointless as we repeat this
+    # code several times (for different scalings), when we should
+    # perhaps just change the scaling here (to avoid re-creating
+    # everything).
     #
     # key = (stack, cpt), value = file name incl VFS
     evt_name = {}
@@ -627,6 +735,11 @@ def draw_hulls_and_images(master_hull,
         # and not worry about them overlapping anything.
         #
         ax.autoscale(enable=False)
+
+        # Draw on any PSFs. Do this first so they appear under
+        # everything else.
+        #
+        draw_xmdat3(xmdat3map[stack], ax, ax_trans)
 
         # Convert from stack name to STKIDxxx value and add in
         # the component number.
