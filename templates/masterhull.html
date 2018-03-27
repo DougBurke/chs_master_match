@@ -126,6 +126,38 @@
         </table>
 {% endif %}
 
+	{# indicate color mappings #}
+	<div>
+	  <table>
+	    <thead>
+	      <tr>
+		<th>Color/Shape</th><th>Meaning</th>
+	      </tr>
+	    <tbody>
+	      <tr>
+		<td>White ellipse</td>
+		<td>Stack PSF (from xmdat3 file)</td>
+	      </tr>
+	      <tr>
+		<td>Solid Gold</td>
+		<td>Proposed master hull</td>
+	      </tr>
+	      <tr>
+		<td>Dashed Cyan</td>
+		<td>Proposed hull but it's a QA case</td>
+	      </tr>
+	      <tr>
+		<td>Orange</td>
+		<td>Stack hull (dashed if there was manual adjustment)</td>
+	      </tr>
+	      <tr>
+		<td>Red</td>
+		<td>Other hulls in this stack (dashed means manual adjustment).</td>
+	      </tr>
+	    </tbody>
+	  </table>
+	</div>
+
       </div>
 
       <div id='notes'><p class='label'>Notes</p>
