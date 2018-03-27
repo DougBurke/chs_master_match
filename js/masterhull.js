@@ -11,6 +11,8 @@ var state;
 var pageNum;
 var imageScale = 'log10';
 
+const psfColor = 'white';
+
 // Change to the given page and scaling.
 //
 function changePage() {
@@ -307,7 +309,7 @@ function addPSFRegions(stack, win) {
     return;
   }
 
-  const psfOpts = {color: 'yellow',
+  const psfOpts = {color: psfColor,
 		   changeable: false,
 		   tags: 'psf'};
 
@@ -597,10 +599,10 @@ function psf_html(stack, id) {
 
   let html = "<span class='colorize'>PSF: ";
   html += "<select id='" + id + "PSFColor'>";
-  for (const newopt of ['hide', 'yellow', 'white', 'black', 'red',
+  for (const newopt of ['hide', 'white', 'yellow', 'black', 'red',
   			    'orange', 'cyan', 'blue', 'brown']) {
   	  html += "<option value='" + newopt + "'";
-  	  if (newopt === 'yellow') {
+  	  if (newopt === psfColor) {
   	      html += " selected";
   	  }
   	  html += ">" + newopt + "</option>";
