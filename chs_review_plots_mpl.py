@@ -511,11 +511,11 @@ def draw_hulls_and_images(master_hull,
     title = "{} {:03d}".format(ensemble, masterid) + \
         "  #stacks={} #hulls= {}".format(nstacks, nhulls)
     tcol = 'k'
+    qatitle = None
+    qacol = 'r'
 
     if master_hull['status'].startswith('qa'):
-        tcol = 'r'
-        title = "{} {}".format(master_hull['status'].upper(),
-                               title)
+        qatitle = master_hull['status'].upper()
 
     page_idx = 0
     nplots_in_page = None
@@ -718,9 +718,14 @@ def draw_hulls_and_images(master_hull,
             ptitle = title + '  Page {}/{}'.format(page_idx,
                                                    npages)
 
-            fig.text(0.5, 0.95, ptitle, fontsize=18,
+            fig.text(0.5, 0.96, ptitle, fontsize=16,
                      color=tcol,
                      horizontalalignment='center')
+
+            if qatitle is not None:
+                fig.text(0.5, 0.92, qatitle, fontsize=16,
+                         color=qacol,
+                         horizontalalignment='center')
 
             if evtscale == 'none':
                 sclbl = 'linear'

@@ -437,8 +437,7 @@ def write_hulls(ensemble, outfile, hullcpts, hullareas, outlines,
     #
     nmax = 0
     for outline in outlines:
-        # should we skip the QA case?
-        if outline['status'] != 'okay':
+        if outline['status'].startswith('qa'):
             continue
 
         eqpos = outline['eqpos']
@@ -489,7 +488,13 @@ def write_hulls(ensemble, outfile, hullcpts, hullareas, outlines,
 
         base_stack.append(bs)
 
-        if outline['status'] == 'okay':
+        if outline['status'].startswith('qa'):
+            nvertex.append(0)
+
+            print("Skipping data for " +
+                  "Match_Id={} status={}".format(i + 1,
+                                                 outline['status']))
+        else:
             vs = outline['eqpos']
             assert vs.ndim == 2
             assert vs.shape[0] == 2
@@ -497,13 +502,6 @@ def write_hulls(ensemble, outfile, hullcpts, hullareas, outlines,
 
             nvertex.append(npts)
             eqpos[i, :, :npts] = vs
-
-        else:
-            nvertex.append(0)
-
-            print("Skipping data for " +
-                  "Match_Id={} status={}".format(i + 1,
-                                                 outline['status']))
 
     add_col(cr, 'Master_Id', mid,
             desc='This is an internal number, do not expose')
@@ -573,10 +571,16 @@ def dump_qa(ensemble, outdir, ctr, outline,
 
     """
 
-    assert outline['status'] == 'qa'
+    assert outline['status'].startswith('qa')
     assert outline['eqpos'] is not None
     assert outline['pos'] is not None
     assert outline['base_stack'] is not None
+
+    idx = outline['status'].find('-')
+    if idx == -1:
+        reason = "unknown"
+    else:
+        reason = outline['status'][idx + 1:]
 
     outfile = os.path.join(outdir,
                            'qa.{:03d}.v{:03d}.fits'.format(ctr,
@@ -589,7 +593,9 @@ def dump_qa(ensemble, outdir, ctr, outline,
     add_header(cr, [('ENSEMBLE', ensemble,
                      'The ensemble'),
                     ('HULLCPT', ctr,
-                     'The Master_Id of the hull')])
+                     'The Master_Id of the hull'),
+                    ('QREASON', reason,
+                     'Why is this a QA case?')])
 
     eqpos = outline['eqpos']
     pos = outline['pos']
@@ -860,9 +866,15 @@ def process_ensemble(ensemblefile, ensemble, outdir,
         print("NOTE: found {} master overlaps -> QA".format(noverlap))
 
     for i, outline in enumerate(outlines):
-        if outline['status'] != 'okay':
-            print("status = {}".format(outline['status']))
+        if outline['status'].startswith('qa'):
+            dump_qa(ensemble, outdir, i + 1, outline,
+                    creator=creator,
+                    revision=revision,
+                    color=qa_color)
         else:
+            if outline['status'] != 'todo':
+                print("NOTE: status = {}".format(outline['status']))
+
             outfile = os.path.join(outdir,
                                    'master.{}.v{:03d}.reg'.format(i + 1,
                                                                   revision))
@@ -873,12 +885,6 @@ def process_ensemble(ensemblefile, ensemble, outdir,
                 ofh.write(ostr)
 
             print("Created: {}".format(outfile))
-
-        if outline['status'] == 'qa':
-            dump_qa(ensemble, outdir, i + 1, outline,
-                    creator=creator,
-                    revision=revision,
-                    color=qa_color)
 
     # Write out the "cmst3" file, as a FITS file.
     #

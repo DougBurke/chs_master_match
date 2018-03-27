@@ -639,7 +639,8 @@ def contour_image(infile, level, tmpdir=None):
     Returns
     -------
     out : dict
-        The status keyword is one of: 'okay', 'qa', or 'failed'.
+        The status keyword is one of: 'okay', 'failed', or
+        'qa-<reason>'.
         If status is 'okay' then the convex hull is returned in the
         'hull' key, and is in celestial coordinates.
         The reason keyword is set if status is not 'okay' and provides
@@ -740,6 +741,7 @@ def contour_image(infile, level, tmpdir=None):
 
     # If there is one row of a Polygon then convert to a convex
     # hull and return.
+    #
     if npoly == 1:
         sky_hull = make_convex_hull(sky[0])
         cel_hull = sky_to_cel(sky_hull)
@@ -792,7 +794,7 @@ def contour_image(infile, level, tmpdir=None):
         hulls_cel.append(cel_hull)
         hulls_sky.append(sky_hull)
 
-    return {'status': 'qa',
+    return {'status': 'qa-multiple',
             'reason': 'multiple hulls found',
             'hulls_cel': hulls_cel,
             'hulls_sky': hulls_sky}
@@ -913,6 +915,11 @@ def merge_polygons(hulls,
     else:
         raise ValueError("invalid maxcount='{}'".format(maxcount))
 
+    # TODO: need to re-work the choice of "best stack" as I think we do
+    #       want the nearest... (of course, if things get edited then
+    #       this may be invalid, but that's a down-stream issue).
+    #
+
     # Need to pick a base coordinate system to do the calculations
     # in. There is no real reason to pick any one in particular
     # (the closest tangent point to this source may be nice but
@@ -1020,6 +1027,30 @@ def merge_polygons(hulls,
     out = contour_image(filtfile.name, level,
                         tmpdir=tmpdir)
 
+    # Need to check if the proposed hull overlaps all stack hulls,
+    # which is only needed in the "okay" case.
+    #
+    if out['status'] == 'okay':
+        proposed = utils.make_region_string(out['hull_sky'])
+
+        # The polygons in polys are in the correct SKY system, so
+        # can look for an overlap with the proposed hull
+        #
+        all_overlap = True
+        for poly in polys:
+            shull = utils.make_region_string(poly)
+            all_overlap &= utils.check_overlap(proposed, shull)
+            if not all_overlap:
+                break
+
+        if not all_overlap:
+            nout = {'status': 'qa-loststack',
+                    'reason': 'at least one stack hull is not ' +
+                    'covered by the proposed hull',
+                    'hulls_cel': [out['hull_cel']],
+                    'hulls_sky': [out['hull_sky']]}
+            out = nout
+
     return out, tr_stackid
 
 
@@ -1062,11 +1093,11 @@ def make_merged_hull(hullcpts, mrgsrc3dir,
     -------
     outline : dict
         The outline of the merged hull. The keys are:
-        status, eqpos, pos, base_stack. If status is not 'okay'
+        status, eqpos, pos, base_stack. If status is not 'todo'
         then eqpos and pos can be None (status is 'error', in
         which case base_stack will also be None)
         or 3D shapes (i.e. npolygons, 2, npts), when status is
-        'qa'.
+        'qa-<reason>'.
 
     Notes
     -----
@@ -1086,7 +1117,7 @@ def make_merged_hull(hullcpts, mrgsrc3dir,
     #
     if len(hulls) == 1:
         h0 = hulls[0]
-        outline = {'status': 'okay',
+        outline = {'status': 'todo',
                    'eqpos': h0['eqsrc'],
                    'pos': h0['pos'],
                    'base_stack': h0['stkid']}
@@ -1101,7 +1132,7 @@ def make_merged_hull(hullcpts, mrgsrc3dir,
     #       needlessly different, but not worth changing now.
     #
     if out['status'] == 'okay':
-        outline = {'status': 'okay',
+        outline = {'status': 'todo',
                    'eqpos': out['hull_cel'],
                    'pos': out['hull_sky'],
                    'base_stack': tr_stkid}
@@ -1114,10 +1145,10 @@ def make_merged_hull(hullcpts, mrgsrc3dir,
     # Possible failures are
     #    status=failed   - may not have any data
     #    status=error    - returned unexpected data
-    #    status=qa       - multiple hulls returned
+    #    status=qa...    - there's a problem
     #
-    if out['status'] == 'qa':
-        outline = {'status': 'qa',
+    if out['status'].startswith('qa'):
+        outline = {'status': out['status'],
                    'eqpos': out['hulls_cel'],
                    'pos': out['hulls_sky'],
                    'base_stack': tr_stkid}
@@ -1217,7 +1248,7 @@ def do_masters_overlap(m1, m2, transforms):
     #
     def toqa(m):
         "Change status and pos/eqpos arrays"
-        m['status'] = 'qa'
+        m['status'] = 'qa-overlap'
         m['pos'] = listify(m['pos'])
         m['eqpos'] = listify(m['eqpos'])
 
