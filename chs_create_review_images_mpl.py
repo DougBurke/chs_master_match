@@ -121,6 +121,8 @@ def create_review_products(chsfile, outdir,
     ensemblemap = metadata['ensemblemap']
     revision = metadata['revision']
 
+    mids = sorted(hulllist.keys())
+
     # What stacks do we care about (those with hulls)
     stacks = set([])
 
@@ -148,21 +150,29 @@ def create_review_products(chsfile, outdir,
     if not os.path.isdir(outdir):
         os.mkdir(outdir)
 
+    # Read in all the QAs, labelled by mid.
+    #
+    qas = {}
+    for mid in mids:
+        src = hulllist[mid]
+        if src['status'].startswith('qa'):
+            qas[mid] = read_qa_hulls(chsdir, revision,
+                                     src['master_id'])
+
     # Context image: FOV + all the hulls
     #
     hullmap = {s: utils.read_hulls_from_mrgsrc3(m)
                for s, m in zip(stacks, mrgsrc3files)}
 
     hulls = [hullmap[s] for s in stacks]
-    plots.draw_ensemble_outline(ensemble, hulllist, hulls, fov3files)
+    plots.draw_ensemble_outline(ensemble, hulllist, hulls, qas,
+                                fov3files)
 
     filename = 'field.{}.v{:03d}.png'.format(ensemble, revision)
     outfile = os.path.join(outdir, filename)
 
     plt.savefig(outfile)
     print("Created: {}".format(outfile))
-
-    mids = sorted(hulllist.keys())
 
     # Create the ensemble JSON file
     #
@@ -187,10 +197,9 @@ def create_review_products(chsfile, outdir,
     for mid in mids:
 
         src = hulllist[mid]
-        if src['status'] == 'qa':
-            qahulls = read_qa_hulls(chsdir, revision,
-                                    src['master_id'])
-        else:
+        try:
+            qahulls = qas[mid]
+        except KeyError:
             qahulls = None
 
         # a lot of repeated work to support different scalings,
@@ -208,7 +217,7 @@ def create_review_products(chsfile, outdir,
                                                 evtscale=evtscale,
                                                 qahulls=qahulls)
 
-        if src['status'] == 'qa':
+        if src['status'].startswith('qa'):
             action = 'manual'
         else:
             action = ''

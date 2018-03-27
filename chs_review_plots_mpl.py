@@ -209,6 +209,76 @@ def draw_xmdat3(regs, axis, transform,
         axis.add_patch(e)
 
 
+# TODO: should we draw on the FOV?
+#
+def draw_hull(ax_trans, hull, hcolor, lthick, lstyle, opacity=1):
+    "line-style handling is messy"
+
+    if 'mancode' in hull:
+        if hull['mancode'] == 0:
+            lstyle = 'solid'
+        else:
+            lstyle = 'dotted'
+
+    eqsrc = hull['eqpos']
+    x = eqsrc[0]
+    y = eqsrc[1]
+
+    plt.plot(x, y, linestyle=lstyle, linewidth=lthick,
+             alpha=opacity,
+             color=hcolor, transform=ax_trans)
+
+
+def label_hull(ax_trans, hull, label, color='black'):
+    """Label the hull at its mid-point (well, line pointing to it)."""
+
+    ra = hull['eqpos'][0]
+    dec = hull['eqpos'][1]
+
+    # Offset from the center to avoid a clash where the number can be
+    # obscured by the hull; not sure what the best heuristic here.
+    #
+    ra0 = (ra.min() + ra.max()) / 2.0
+    dec0 = (dec.min() + dec.max()) / 2.0
+
+    # pick ~ 45" in both X and Y as a guess, since ~ 1' looks to
+    # be the size below which confusion happens (on one test
+    # case, ens0020500_001. This turned out to be a bit small
+    # so increase it.
+    #
+    # Add in an arrow to help indicate the center of the hull.
+    #
+    dra = 3 * 45.0 / 3600 / np.cos(dec0 * np.pi / 180.0)
+    ddec = 3 * 45.0 / 3600
+
+    """
+    I had trouble getting this to work; probably because the
+    shift is small enough that the line ended up being "invisible"
+    csys = ax_trans
+    plt.annotate("{}".format(mid),
+                 xy=(ra0, dec0),
+                 xytext=(ra0 + dra, dec0 + ddec),
+                 arrowprops=dict(facecolor='black',
+                                 arrowstyle='-'),
+                 color='black',
+                 fontsize=12,
+                 xycoords=csys,
+                 textcoords=csys)
+                 """
+
+    plt.plot([ra0, ra0 + dra], [dec0, dec0 + ddec],
+             '-', color=color,
+             alpha=0.4,
+             transform=ax_trans)
+
+    plt.text(ra0 + dra, dec0 + ddec, label,
+             horizontalalignment='center',
+             # verticalalignment='center',
+             color=color,
+             fontsize=12,
+             transform=ax_trans)
+
+
 def draw_hulls_and_images(master_hull,
                           stackhulls,
                           hullmap,
@@ -239,8 +309,8 @@ def draw_hulls_and_images(master_hull,
     ----------
     master_hull: dict
         Contains the master hull: fields are 'master_id', 'status',
-        and 'eqpos'. The 'status' field should be either 'qa' or
-        'okay'.
+        and 'eqpos'. The 'status' field should be one of:
+        'todo', 'okay', 'qa[-...]'.
     stackhulls : list
         What stack-level hulls form this master hull? Each entry
         is a dictionary with the keys 'stack' and 'component'.
@@ -261,7 +331,7 @@ def draw_hulls_and_images(master_hull,
     revision : int
         The revision number of the file.
     qahulls : None or list of dict, optional
-        This is only used if master_hull['status'] is set to 'qa'.
+        This is only used if master_hull['status'] is set to 'qa[-...]'.
         Each entry represents a hull, and has the 'eqpos' field
         which contains the polygon.
     evtscale : {'none', 'log10', 'log', 'sqrt'}, optional
@@ -442,28 +512,10 @@ def draw_hulls_and_images(master_hull,
         "  #stacks={} #hulls= {}".format(nstacks, nhulls)
     tcol = 'k'
 
-    if master_hull['status'] != 'okay':
+    if master_hull['status'].startswith('qa'):
         tcol = 'r'
         title = "{} {}".format(master_hull['status'].upper(),
                                title)
-
-    # TODO: should we draw on the FOV?
-    def draw_hull(ax_trans, hull, hcolor, lthick, lstyle, opacity=1):
-        "line-style handling is messy"
-
-        if 'mancode' in hull:
-            if hull['mancode'] == 0:
-                lstyle = 'solid'
-            else:
-                lstyle = 'dotted'
-
-        eqsrc = hull['eqpos']
-        x = eqsrc[0]
-        y = eqsrc[1]
-
-        plt.plot(x, y, linestyle=lstyle, linewidth=lthick,
-                 alpha=opacity,
-                 color=hcolor, transform=ax_trans)
 
     page_idx = 0
     nplots_in_page = None
@@ -809,11 +861,11 @@ def draw_hulls_and_images(master_hull,
         # they do not obscure them (for cases when the two contours
         # are the same or very similar).
         #
-        if master_hull['status'] == 'okay':
-            draw_hull(ax_trans, master_hull, master_color, 1, 'solid')
-        else:
+        if master_hull['status'].startswith('qa'):
             for qahull in qahulls:
                 draw_hull(ax_trans, qahull, qa_color, 1, 'dashed')
+        else:
+            draw_hull(ax_trans, master_hull, master_color, 1, 'solid')
 
         # clean up the plot.
         #
@@ -832,7 +884,8 @@ def draw_hulls_and_images(master_hull,
     return {'npages': npages}
 
 
-def draw_ensemble_outline(ensemble, mhulls, hulls, fov3files):
+def draw_ensemble_outline(ensemble, mhulls, hulls, qas, fov3files,
+                          qa_color='cyan'):
     """Draw up the FOVs for the ensembles and the different stack-level hulls.
 
     Parameters
@@ -847,10 +900,16 @@ def draw_ensemble_outline(ensemble, mhulls, hulls, fov3files):
     hulls : list of list of stack hulls
         The stack-level hulls; each entry in the list is the output of
         read_hulls_from_mrgsrc3
+    qas : None or dict
+        If not None then the QA hulls for this ensemble, where the
+        key is the master id and the value is the return value
+        of chs_create_review_images_mpl:read_qa_hulls.
     fov3files : list of str
         The FOV3 files for the stacks in the ensemble. This is assumed
         to be the FOV files for those stacks containing hulls (i.e.
         they act as a reasonable bounding box for the display).
+    qa_color : str, optional
+        The color for any QA hulls and labels.
 
     """
 
@@ -898,8 +957,8 @@ def draw_ensemble_outline(ensemble, mhulls, hulls, fov3files):
             plt.plot(ra, dec, color=color, alpha=0.07,
                      transform=ax_trans)
 
-    # Draw these somewhat transparent so that the numbering added later
-    # can be seen (it can get busy).
+    # Draw these somewhat transparent so that the numbering added
+    # later can be seen (it can get busy).
     #
     # stack_color = 'orange'
     # main_color = 'gold'
@@ -928,13 +987,7 @@ def draw_ensemble_outline(ensemble, mhulls, hulls, fov3files):
     #
     title_col = 'k'
     for mid, mhull in mhulls.items():
-        if mhull['status'] == 'qa':
-            # fortunately the stack-level hulls will still be drawn
-            # to indicate something odd is going on.
-            #
-            # At present the mhull values doesn't contain any coordinates,
-            # so there's no position to display
-            #
+        if mhull['status'].startswith('qa'):
             title_col = 'r'
             continue
 
@@ -947,53 +1000,28 @@ def draw_ensemble_outline(ensemble, mhulls, hulls, fov3files):
                  transform=ax_trans,
                  color=main_color)
 
-        # Label the hull with its mid-point: should not
-        # need anything fancier than that.
-        #
-        # May want to offset from the center to avoid a clash where
-        # the number can be obscured by the hull; not sure what the
-        # best heuristic here.
-        #
-        ra0 = (ra.min() + ra.max()) / 2.0
-        dec0 = (dec.min() + dec.max()) / 2.0
+        label_hull(ax_trans, mhull,
+                   "{}".format(mid),
+                   main_color)
 
-        # pick ~ 45" in both X and Y as a guess, since ~ 1' looks to
-        # be the size below which confusion happens (on one test
-        # case, ens0020500_001. This turned out to be a bit small
-        # so increase it.
-        #
-        # Add in an arrow to help indicate the center of the hull.
-        #
-        dra = 3 * 45.0 / 3600 / np.cos(dec0 * np.pi / 180.0)
-        ddec = 3 * 45.0 / 3600
+    # Do we have any qa hulls?
+    #
+    if qas is not None:
+        for mid, qahulls in qas.items():
 
-        """
-        I had trouble getting this to work; probably because the
-        shift is small enough that the line ended up being "invisible"
-        csys = ax_trans
-        plt.annotate("{}".format(mid),
-                     xy=(ra0, dec0),
-                     xytext=(ra0 + dra, dec0 + ddec),
-                     arrowprops=dict(facecolor='black',
-                                     arrowstyle='-'),
-                     color='black',
-                     fontsize=12,
-                     xycoords=csys,
-                     textcoords=csys)
-                     """
+            # We label each "qa component"
+            #
+            nqas = len(qahulls)
+            for i, qahull in enumerate(qahulls):
+                draw_hull(ax_trans, qahull, qa_color,
+                          1, 'dashed')
 
-        plt.plot([ra0, ra0 + dra], [dec0, dec0 + ddec],
-                 '-', color='black',
-                 alpha=0.4,
-                 transform=ax_trans)
+                lbl = "QA {}".format(mid)
+                if nqas > 1:
+                    lbl += " [{}]".format(i + 1)
 
-        plt.text(ra0 + dra, dec0 + ddec,
-                 "{}".format(mid),
-                 horizontalalignment='center',
-                 # verticalalignment='center',
-                 color='black',
-                 fontsize=12,
-                 transform=ax_trans)
+                label_hull(ax_trans, qahull, lbl,
+                           qa_color)
 
     # Report on the number of stacks with hulls, not the number
     # in the ensemble.
