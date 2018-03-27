@@ -812,6 +812,16 @@ def read_hull(stkid, cpt, indir):
     indir : str
         The location of the mrgsrc3 file.
 
+    Returns
+    -------
+    out : dict
+        Keys include: stkid, cpt, infile, tr which is the
+        transform from SKY to celestial, pos and eqsrc
+        which are the vertexes of the hull in SKY and
+        celestial coordinates, and offaxis which is the
+        separation from the "center" of the stack to
+        the center of the hull in arcminutes.
+
     """
 
     mrg3file = utils.find_mrgsrc3(stkid, indir)
@@ -832,11 +842,21 @@ def read_hull(stkid, cpt, indir):
     pos = pos[:, idx]
     eqsrc = eqsrc[:, idx]
 
+    px0, py0 = utils.polygon_centroid(pos[0], pos[1])
+    p0 = np.asarray([px0, py0])
+
+    s0 = tr.get_parameter_value('CRPIX')
+    pixsizes = tr.get_parameter_value('CDELT')
+
+    sep2 = ((p0 - s0) ** 2).sum()
+    offaxis = np.sqrt(sep2) * pixsizes[1] * 60
+
     return {'cpt': cpt,
             'tr': tr,
             'pos': pos,
             'eqsrc': eqsrc,
             'stkid': stkid,
+            'offaxis': offaxis,
             'infile': infile}
 
 
@@ -915,36 +935,19 @@ def merge_polygons(hulls,
     else:
         raise ValueError("invalid maxcount='{}'".format(maxcount))
 
-    # TODO: need to re-work the choice of "best stack" as I think we do
-    #       want the nearest... (of course, if things get edited then
-    #       this may be invalid, but that's a down-stream issue).
+    # Pick the "best" stack - that is, the stack used as the bass
+    # transform, as the stack which has the smallest off-axis angle
+    # hull.
     #
-
-    # Need to pick a base coordinate system to do the calculations
-    # in. There is no real reason to pick any one in particular
-    # (the closest tangent point to this source may be nice but
-    # not worth the effort). I am going to pick the first ACIS
-    # cohort I find (falling back to HRC if necessary).
+    # This only makes sense when the hulls are "nicely distributed",
+    # since any odd arrangement is going to make this hard to
+    # do - i.e. the choice could be redone after manual QA.
     #
-    # This is not the most-elegant pieces of code, but I doubt
-    # it is a major time sink.
-    #
-    # The hull list is sorted so that the choice of base stack is
-    # repeatable.
-    #
-    tr = None
-    tr_stackid = None
-    is_acis = False
-
-    for h in sorted(hulls, key=lambda h: h['stkid']):
-        if h['stkid'].startswith('acis'):
-            tr = h['tr']
-            tr_stackid = h['stkid']
-            is_acis = True
-            break
-        elif tr is None:
-            tr = h['tr']
-            tr_stackid = h['stkid']
+    sorted_hulls = sorted(hulls, key=lambda h: h['offaxis'])
+    hull0 = sorted_hulls[0]
+    tr_stackid = hull0['stkid']
+    tr = hull0['tr']
+    is_acis = tr_stackid.startswith('acis')
 
     # Scale the smoothing scale so that it matches the HRC pixel
     # size, if necessary. That is, we want to smooth by a kernel
