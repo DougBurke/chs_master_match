@@ -26,7 +26,7 @@ exits with a status of 0.
 
 The compzero value is added to the component numbers of the stack-level
 hulls to create the COMPONENT column of the HULLMATCH block. It is
-added as the COMPZERO keyword to the header, and defaults to 9000 when
+added as the COMPZERO keyword to the header, and defaults to 0 when
 not given. It refers to the COMPONENT value of a stack-level hull
 with a zero component value (they are 1-based).
 
@@ -312,7 +312,7 @@ def add_col(cr, name, values,
 def write_hulls(ensemble, outfile, hullcpts, hullareas, outlines,
                 hull_store,
                 stacks=None,
-                compzero=9000,
+                compzero=0,
                 revision=1,
                 creator=None):
     """Create the "CHS mst3" file.
@@ -715,7 +715,7 @@ def write_stack_hull_as_ds9(hull, outdir, revision, color='green'):
 
 def process_ensemble(ensemblefile, ensemble, outdir,
                      mrgsrc3dir,
-                     compzero=9000,
+                     compzero=0,
                      revision=1,
                      creator=None,
                      master_color='green',
@@ -919,7 +919,7 @@ if __name__ == "__main__":
                         default="/data/L3/chs_master_match/input/mrgsrc3",
                         help="The mrgsrc3 directory: default %(default)s")
     parser.add_argument("--compzero", type=int,
-                        default=9000,
+                        default=0,
                         help="The COMPONENT value for stack hull cpt=0: default %(default)s")
 
     args = parser.parse_args(sys.argv[1:])
