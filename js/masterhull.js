@@ -800,11 +800,17 @@ function broadcastMasterUpdate(img, action) {
   const baseWin = {display: js9win};
 
   // Convert the polygon into a convex hull (if necessary).
+  // Go via lcs.pts since want to use a tangent-plane coordinate
+  // system rather than WCS, so do not have to bother with
+  // projections or ra=0/360 boundary. Could convert from .wcspts
+  // to pixels, do it there, then convert back if lcs.pts doesn't
+  // work out.
   //
-  let chull_sky = window.convexHull(action.pts);
+  let chull_sky = window.convexHull(action.lcs.pts);
   let chull_eqpos = [];
   for (let sky of chull_sky) {
-    chull_eqpos.push(JS9.PixToWCS(sky, baseWin));
+    const ipos = JS9.LogicalToImagePos(sky, baseWin);
+    chull_eqpos.push(JS9.PixToWCS(ipos, baseWin));
   }
 
   // Now that the convex-hull version appears in a different layer,
