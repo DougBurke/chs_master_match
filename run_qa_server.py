@@ -2119,8 +2119,13 @@ class CHSHandler(BaseHTTPRequestHandler):
     def get_evt3(self, stack, use_gzip=False):
         """Return the evt3 file for the given stack.
 
-        Let's see how gzip-encoding works: if the input
-        is gzip-encoded then there's less work for the server!
+        We handle both *.fits and *.fits.gz, so that
+        large files can be uncompressed (to avoid running
+        out of memory with the compression/decompression,
+        mainly in other stages of the pipeline).
+
+        use_gzip support is very-lightly tested; it is
+        left in mainly for documentation.
         """
 
         # Need to get the version
@@ -2134,6 +2139,9 @@ class CHSHandler(BaseHTTPRequestHandler):
 
         # Should pick the highest version; for now pick the first
         #
+        if len(matches) > 1:
+            log("Multiple matches for {}".format(pat))
+
         infile = matches[0]
 
         if use_gzip:
