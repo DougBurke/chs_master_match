@@ -351,6 +351,25 @@ function changeFilter(stack, cpt, band, opts) {
   changeJS9Display(stack, cpt, {filter: enfilter}, opts);
 }
 
+function makeConvexOpts(name) {
+  return {color: 'lime',
+	  strokeDashArray: [5, 1],
+	  changeable: false,
+	  evented: false,
+	  tags: name};
+}
+
+function makeMasterOpts(name, isqa) {
+  var color;
+  if (isqa) { color = 'cyan'; } else { color = 'gold'; }
+
+  return {movable: false,
+	  color: color,
+	  rotatable: false,
+	  resizable: false,
+	  tags: name};
+}
+
 // TODO: if we add a JS9 after editing (but not saved) in another
 //       JS9 then this show the edited version, not the saved one.
 //
@@ -376,11 +395,10 @@ console.log("In addMasterHullToJS9");
     return;
   }
 
+  const is_qa = masterhull.status.startsWith('qa');
+
   const tagName = 'master';
-  const hullOpts = {movable: false,
-		    rotatable: false,
-		    resizable: false,
-		    tags: tagName};
+  const hullOpts = makeMasterOpts(tagName, is_qa);
 
   /* If this is a review page then don't let the user change the hull */
   if (state.ensemble_status !== "todo") {
@@ -389,19 +407,14 @@ console.log("In addMasterHullToJS9");
 
   const origOpts = Object.assign({}, hullOpts);
   origOpts.color = 'white';
-  origOpts.strokeDashArray = [3, 3];
+  origOpts.strokeDashArray = [3, 2];
 
   // Now that the convex-hull version appears in a different layer,
   // the name can match the master name.
   //
   // const convexName = 'convex';
   const convexName = 'master';
-
-  const convexOpts = {color: 'cyan',
-                      strokeDashArray: [5, 3],
-                      changeable: false,
-                      evented: false,
-                      tags: convexName};
+  const convexOpts = makeConvexOpts(convexName);
 
   // Can make the code responsive, so it can change rather than delete
   // if necessary.
@@ -816,14 +829,9 @@ function broadcastMasterUpdate(img, action) {
   // Now that the convex-hull version appears in a different layer,
   // the name can match the master name.
   //
-  // const convexName = 'convex';
   const convexName = 'master';
 
-  const convexOpts = {color: 'cyan',
-                      strokeDashArray: [5, 3],
-                      changeable: false,
-                      evented: false,
-                      tags: convexName};
+  const convexOpts = makeConvexOpts(convexName);
 
   // Since using LightWindows, can look for div.dhtmlwindow
   // containers, and the knowledge that the id for this is
@@ -873,7 +881,6 @@ function broadcastMasterUpdate(img, action) {
         hullpts.push(JS9.WCSToPix(wcs, imname));
       }
 
-      // JS9.ChangeRegions(convexName, {pts: hullpts}, imname);
       JS9.ChangeShapes(convexLayer, convexName, {pts: hullpts},
                        imname);
     }
@@ -888,7 +895,6 @@ function broadcastMasterUpdate(img, action) {
         pts.push(JS9.WCSToPix(wcs, imname));
       }
 
-      // JS9.ChangeRegions('master', {pts: pts}, imname);
       JS9.ChangeShapes(masterLayer, 'master', {pts: pts}, imname);
     }
 
