@@ -195,3 +195,11 @@ a.hulllink:hover {
 .hulllink + .hulllink {
   margin-left: 0.2em;
 }
+
+#colormapping {
+  display: none;
+}
+
+#colormappingselect {
+  width: 10em;
+}

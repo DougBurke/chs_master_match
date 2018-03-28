@@ -1147,6 +1147,21 @@ function setupMasters() {
 
 }
 
+var colorsShown = false;
+function toggleColorMapping() {
+  const el = document.getElementById('colormapping');
+  var lbl;
+  if (colorsShown) {
+    el.style.display = "none";
+    lbl = 'Show colors';
+  } else {
+    el.style.display = "block";
+    lbl = 'Hide colors';
+  }
+  colorsShown = !colorsShown;
+  document.getElementById('colormappingselect').innerHTML = lbl;
+}
+
 // Set up the page
 
 function updatePage(json) {
@@ -1182,6 +1197,15 @@ function updatePage(json) {
   }
 
   setPage(1);
+
+  // Show/hide the color mapping table.
+  //
+  const colorButton = document.getElementById('colormappingselect');
+  if (colorButton !== null) {
+    colorButton
+      .addEventListener("click",
+			(e) => { toggleColorMapping(); });
+  }
 
   // Update the "user content" section
   const usernotes = document.getElementById("usercontent");
