@@ -1523,8 +1523,8 @@ def create_master_hull_page(env,
             wcs_orig = [eqpos_to_dict(eqpos, nvertex)]
         else:
             qafile = os.path.join(dname,
-                                  'qa.{}.v{}.fits'.format(mid,
-                                                          revstr))
+                                  'qa.{:03d}.v{}.fits'.format(midval,
+                                                              revstr))
             if not os.path.isfile(qafile):
                 errlog("missing qafile {}".format(qafile))
                 out = "<!DOCTYPE html><html><head><title>INTERNAL ERROR</title>"
