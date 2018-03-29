@@ -860,7 +860,7 @@ function broadcastMasterUpdate(img, action) {
   const baseConvexIndex = masterhulls_ids.convex_index[baseKey][action.id];
   const baseMasterIndex = masterhulls_ids.master_index[baseKey][action.id];
 
-  console.log("indexes into array: " + baseConvexIndex + " " + baseMasterIndex);
+  // console.log("indexes into array: " + baseConvexIndex + " " + baseMasterIndex);
 
   // Convert the polygon into a convex hull (if necessary).
   // Go via lcs.pts since want to use a tangent-plane coordinate
@@ -875,15 +875,6 @@ function broadcastMasterUpdate(img, action) {
     const ipos = JS9.LogicalToImagePos(sky, baseWin);
     chull_eqpos.push(JS9.PixToWCS(ipos, baseWin));
   }
-
-  // Assume that action.id is the identifier for this region in
-  // all JS9 windows. This is a hack and really I should set up
-  // some sort of mapping between action.tags[0] - under the
-  // assumption that this is the "unique" name - and the
-  // JS9 region id.
-  //
-  const convexName = 'master';
-  const convexOpts = makeConvexOpts(convexName);
 
   // Since using LightWindows, can look for div.dhtmlwindow
   // containers, and the knowledge that the id for this is
@@ -928,8 +919,6 @@ function broadcastMasterUpdate(img, action) {
       hullpts.push(JS9.WCSToPix(wcs, imname));
     }
 
-    // What is the id of the convex hull we should change?
-    //
     JS9.ChangeShapes(convexLayer, convexId, {pts: hullpts}, imname);
 
     // Only adjust the master polygon if this is not the

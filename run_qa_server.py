@@ -603,6 +603,7 @@ def parse_datadir(datadir, userdir):
                                   userdir,
                                   ensemble)
         if jcts is None:
+            store[ensemble] = {'error': True, 'ensemble': ensemble}
             continue
 
         v = jcts['latest_version']
@@ -642,9 +643,14 @@ def get_data_summary(datadir, userdir):
     out = {'todos': [],
            'reviews': [],
            'completed': [],
+           'errors': [],
            'usernotes': '',
            'lastmodified': ''}
     for ens in state:
+        if 'error' in ens:
+            out['errors'].append(ens['ensemble'])
+            continue
+
         if ens['status']['user'] == 'completed':
             key = 'completed'
         elif ens['status']['user'] == 'review':

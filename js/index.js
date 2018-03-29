@@ -165,6 +165,16 @@ function updatePage(json) {
   document.getElementById("nreviews").innerHTML = nens(nreviews);
   document.getElementById("ncompleted").innerHTML = nens(ncompleted);
 
+  const errElem = document.getElementById("errors");
+  const nerrors = json.errors.length;
+  if (nerrors === 0) {
+      errElem.innerHTML = "No errors";
+  } else {
+      errElem.innerHTML = nens(nerrors) + " - " + json.errors.join(", ");
+      errElem.style.color = "red";
+  }
+
+
   // TODO: do we have to clear out these divs?
   var parent = document.getElementById("todo-table-body");
   for (let i = 0; i < ntodos; i++) {
