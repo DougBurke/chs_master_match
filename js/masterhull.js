@@ -13,6 +13,9 @@ var imageScale = 'log10';
 
 const psfColor = 'white';
 
+const defBinACIS = 8;
+const defBinHRC = 32;
+
 // Change to the given page and scaling.
 //
 function changePage() {
@@ -597,10 +600,10 @@ function bin_html(stack, id) {
   const all_bins = [1, 2, 4, 8, 16, 32, 64, 128];
   let def_binsize, def_start;
   if (stack.startsWith('hrc')) {
-    def_binsize = 64;
+    def_binsize = defBinHRC;
     def_start = 1;
   } else {
-    def_binsize = 8;
+    def_binsize = defBinACIS;
     def_start = 0;
   }
   const def_bins = all_bins.slice(def_start, def_start + 7);
@@ -799,13 +802,13 @@ function showInJS9(val) {
   const band = settings.enbands_cpt[stack + "." + cptnum];
 
   if (stack.startsWith('acis')) {
-    opts.bin = 8;
+    opts.bin = defBinACIS;
     opts.xdim = 8192;
     opts.ydim = 8192;
     // does setting this actually do anything?
     opts.filter = band_to_filter(band);
   } else {
-    opts.bin = 64;
+    opts.bin = defBinHRC;
     opts.xdim = 16384;
     opts.ydim = 16384;
   }
