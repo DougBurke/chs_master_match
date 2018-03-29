@@ -64,7 +64,19 @@ function zip() {
 //
 var masterhulls_raw = [];
 var masterhulls_cnvx = [];
-var masterhulls_ids = {'original': [], 'master': [], 'convex': []};
+
+// Need mapping from which hull for this master and the polygon id
+// (for the QA case where there are multiple master hulls), and
+// the polygon id to this index (so that we can change things between
+// different JS9 windows). This is actually overly complex, and just guards
+// against issues where the user may have added regions.
+//
+var masterhulls_ids = {
+    // store the polygon id for each stack/cpt key
+    master: {}, convex: {},
+    // store the index for each polygon id
+    master_index: {}, convex_index: {}
+};
 
 // pan to this position; opts is the argument to pass
 // to JS9 commands to determine the window to use.
@@ -204,13 +216,26 @@ function setupJS9(img, stack, cptnum, winid) {
 
   // Go back to the last-saved version of the master hull.
   //
+  // I do not want to delete existing regions since I want the
+  // displays to automatically change - and rely on the change
+  // handler to do this - *but* this only works for the "proposed"
+  // shape, and not the "original" or "convex hull" shapes.
+  //
+  // However, the "original" layer should not be relevant here,
+  // since it should not be changed by this call (it's the proposed
+  // shape, which hasn't been changed by the user).
+  //
+  // The convex hull is based on the hull layer, so it's not
+  // clear how this is picked up/handled.
+  //
+
   const reloadButton = document.getElementById(winid + 'ReloadMasters');
   if (reloadButton !== null) {
     reloadButton
       .addEventListener("click",
 			(e) => {
 			  setupMasters();
-			  addMasterHullToJS9(opts);
+			  addMasterHullToJS9(opts, stack, cptnum, true);
 			});
   }
 
@@ -269,10 +294,10 @@ function setupJS9(img, stack, cptnum, winid) {
 // I'm adding in regions one at a time; the JS9 API lets you specify
 // multiple regions at once, so perhaps I would be better off
 // following that approach - i.e. create all the shapes for a
-// given layer and then add or change them.
-//
-// Or I should just grab the id returned by the AddShapes call so
-// that we can use that at a later time.
+// given layer and then add or change them. However, I end up
+// storing the id value returned by AddShapes, to use later,
+// so this is not possible, at least for those that I want to
+// change.
 //
 function add_hull_to_js9(hull, opts, win, layer='regions') {
 
@@ -370,18 +395,15 @@ function makeMasterOpts(name, isqa) {
 	  tags: name};
 }
 
-// TODO: if we add a JS9 after editing (but not saved) in another
-//       JS9 then this show the edited version, not the saved one.
+// This function adds regions (when reload is false) or changes
+// regions (when reload is true).
 //
-function addMasterHullToJS9(display) {
+// TODO: Deleting stuff is also going to mess things up.
+//
+function addMasterHullToJS9(display, stack, cptnum, reload=false) {
 
 console.log("In addMasterHullToJS9");
 
-  /*
-   * TODO: the tag should act as a unique identifier
-   *       which will be useful when supporting QA cases
-   *       (when can have multiple hulls).
-   */
   const masterhull = settings.regionstore.masterhulls[settings.masterid];
   if (typeof masterhull === "undefined") {
     alert("No master hull found!");
@@ -397,6 +419,35 @@ console.log("In addMasterHullToJS9");
 
   const is_qa = masterhull.status.startsWith('qa');
 
+  if (reload) {
+    redrawMasterHulls(display, stack, cptnum);
+  } else {
+      addMasterHulls(display, stack, cptnum, is_qa);
+  }
+}
+
+function redrawMasterHulls(display, stack, cptnum) {
+
+  const key = toKey(stack, cptnum);
+  let idstore = masterhulls_ids.convex[key];
+  for (var i = 0; i < masterhulls_cnvx.length; i++) {
+    change_hull_in_js9(masterhulls_cnvx[i], convexLayer, idstore[i], display);
+  }
+
+  idstore = masterhulls_ids.master[key];
+  for (var i = 0; i < masterhulls_raw.length; i++) {
+    change_hull_in_js9(masterhulls_raw[i], masterLayer, idstore[i], display);
+  }
+}
+
+function addMasterHulls(display, stack, cptnum, is_qa) {
+
+  const key = toKey(stack, cptnum);
+  if ((key in masterhulls_ids.convex) || (key in masterhulls_ids.master)) {
+    alert("Internal error: key=" + key + " is already in masterhulls_ids");
+  }
+  
+  // Note: the tagName gets over-written later, so should change this.
   const tagName = 'master';
   const hullOpts = makeMasterOpts(tagName, is_qa);
 
@@ -405,77 +456,34 @@ console.log("In addMasterHullToJS9");
     hullOpts.changeable = false;
   }
 
-  const origOpts = Object.assign({}, hullOpts);
-  origOpts.color = 'white';
-  origOpts.strokeDashArray = [3, 2];
-
-  // Now that the convex-hull version appears in a different layer,
-  // the name can match the master name.
-  //
-  // const convexName = 'convex';
+  // Note: the name will be changed later.
   const convexName = 'master';
   const convexOpts = makeConvexOpts(convexName);
 
-  // Can make the code responsive, so it can change rather than delete
-  // if necessary.
-  //
-  // JS9.RemoveShapes(originalLayer, tagName, display);
-  // JS9.RemoveShapes(masterLayer, tagName, display);
+  masterhulls_ids.convex[key] = [];
+  masterhulls_ids.convex_index[key] = [];
+  for (var i = 0; i < masterhulls_cnvx.length; i++) {
+    const hull = masterhulls_cnvx[i];
 
-  // Note that we use the stored values for the original version
-  // but the up-to-date version for the current layer.
-  //
-  // TODO: need to have unique tags for the regions so can select
-  //       individual components?
-  //
-  // This code tries to work out what the "right" thing to do is
-  // - namely add a shape or change an existing one - which may
-  // end up being too complicated.
-  //
-  // Deleting stuff is also going to mess things up.
-  //
-  let polyid;
-  let idstore = masterhulls_ids.original;
-  idstore.splice(0);  // do we want this (ie clean out old values)?
+    const shapeName = convexName + i.toString();
+    convexOpts.tags = [shapeName, convexName];
 
-  // NOTE use of wcs_orig so we always see the proposed hull as the original one
-  for (const hull of masterhull.wcs_orig) {
-      const rs = JS9.GetShapes(originalLayer, tagName, display);
-      if (rs.length == 0) {
-	  polyid = add_hull_to_js9(hull, origOpts, display, originalLayer);
-	  idstore.push(polyid);
-      } else {
-          // There should be no change, so no need to do anything here
-	  // JS9.ChangeShapes(originalLayer, tagName, {pts: hull}, display);
-      }
+    const polyid = add_hull_to_js9(hull, convexOpts, display, convexLayer);
+    masterhulls_ids.convex[key][i] = polyid;
+    masterhulls_ids.convex_index[key][polyid] = i;
   }
 
-  idstore = masterhulls_ids.convex;
-  idstore.splice(0);
-  for (const hull of masterhulls_cnvx) {
-    const rs = JS9.GetShapes(convexLayer, convexName, display);
-    if (rs.length == 0) {
-      polyid = add_hull_to_js9(hull, convexOpts, display, convexLayer);
-      idstore.push(polyid);
-    } else {
-      // HARD CODE A SINGLE SHAPE
-      console.log("calling change shape - convex");
-      change_hull_in_js9(hull, convexLayer, idstore[0], display);
-    }
-  }
+  masterhulls_ids.master[key] = [];
+  masterhulls_ids.master_index[key] = [];
+  for (var i = 0; i < masterhulls_raw.length; i++) {
+    const hull = masterhulls_raw[i];
 
-  idstore = masterhulls_ids.master;
-  idstore.splice(0);
-  for (const hull of masterhulls_raw) {
-    const rs = JS9.GetShapes(masterLayer, tagName, display);
-    if (rs.length == 0) {
-      polyid = add_hull_to_js9(hull, hullOpts, display, masterLayer);
-      idstore.push(polyid);
-    } else {
-      // HARD CODE A SINGLE SHAPE
-      console.log("calling change shape - master");
-      change_hull_in_js9(hull, masterLayer, idstore[0], display);
-    }
+    const shapeName = tagName + i.toString();
+    hullOpts.tags = [shapeName, tagName];
+
+    const polyid = add_hull_to_js9(hull, hullOpts, display, masterLayer);
+    masterhulls_ids.master[key][i] = polyid;
+    masterhulls_ids.master_index[key][polyid] = i;
   }
 
 }
@@ -533,7 +541,31 @@ function addRegionsToJS9(img, stack, cptnum, regions) {
     add_hull_to_js9(shull, hullOpts, display, stackLayer);
   }
 
-  addMasterHullToJS9(display);
+  // The "original" shape can not change, and so we draw it here
+  // rather than addMasterHullToJS9, which deals with those things
+  // that can change (either because the user has tweaked the
+  // settings or reloaded them from the last-saved values).
+  //
+  const masterhull = settings.regionstore.masterhulls[settings.masterid];
+
+  const tagName = "original";
+  const origOpts = makeMasterOpts(tagName);
+  origOpts.color = 'white';
+  origOpts.strokeDashArray = [3, 2];
+
+  // NOTE use of wcs_orig so we always see the proposed hull as
+  //      the original one
+  for (var i = 0; i < masterhull.wcs_orig.length; i++) {
+      const hull = masterhull.wcs_orig[i];
+
+      // Setting the name here is suboptimal
+      const shapeName = tagName + i.toString();
+      origOpts.tags = [shapeName, tagName];
+
+      add_hull_to_js9(hull, origOpts, display, originalLayer);
+  }
+
+  addMasterHullToJS9(display, stack, cptnum);
 
   // Move to the center of the stack-level hull, if defined,
   // rather than the center of the master hull.
@@ -707,17 +739,24 @@ function js9_display_html(stack, stacknum, cptnum, band, id) {
   return html;
 }
 
+// Store the mapping between the window id and the stack + component.
+//
+var js9_mapping = {};
 
 // "unique" id for new JS9 windows
 //
 //
 var idctr = 1;
 function js9_id(stack, cptnum) {
-  // return stack;
 
-  var retval = idctr.toString();
+  var retval = "js9win" + idctr.toString();
+  if (retval in js9_mapping) {
+      alert("Internal error: " + retval + " is not unique!");
+  }
+  js9_mapping[retval] = {stack: stack, cpt: cptnum};
+
   idctr += 1;
-  return "js9win" + retval;
+  return retval;
 }
 
 // Create the filter expression for the band.
@@ -740,6 +779,7 @@ function band_to_filter(band) {
 
 // Applies an energy filter for ACIS data to try and match the hull(s).
 //
+
 function showInJS9(val) {
   if (val.trim() === '') { return; }
 
@@ -794,7 +834,7 @@ function handleRegionChange(img, action) {
   // For now, we only care about master tags;
   // this may need to be tweaked if we use the tag name as an id
   //
-  if (action.tags[0] !== "master") { return; }
+  if (!action.tags.includes('master')) { return; }
 
   if (action.mode === "update") {
     broadcastMasterUpdate(img, action);
@@ -812,6 +852,16 @@ function broadcastMasterUpdate(img, action) {
   const js9win = img.display.id;
   const baseWin = {display: js9win};
 
+  // What is the "index" for this polygon?
+  const baseHullinfo = js9_mapping[js9win];
+  const baseKey = toKey(baseHullinfo.stack, baseHullinfo.cpt);
+
+  // These two should be the same
+  const baseConvexIndex = masterhulls_ids.convex_index[baseKey][action.id];
+  const baseMasterIndex = masterhulls_ids.master_index[baseKey][action.id];
+
+  console.log("indexes into array: " + baseConvexIndex + " " + baseMasterIndex);
+
   // Convert the polygon into a convex hull (if necessary).
   // Go via lcs.pts since want to use a tangent-plane coordinate
   // system rather than WCS, so do not have to bother with
@@ -826,11 +876,13 @@ function broadcastMasterUpdate(img, action) {
     chull_eqpos.push(JS9.PixToWCS(ipos, baseWin));
   }
 
-  // Now that the convex-hull version appears in a different layer,
-  // the name can match the master name.
+  // Assume that action.id is the identifier for this region in
+  // all JS9 windows. This is a hack and really I should set up
+  // some sort of mapping between action.tags[0] - under the
+  // assumption that this is the "unique" name - and the
+  // JS9 region id.
   //
   const convexName = 'master';
-
   const convexOpts = makeConvexOpts(convexName);
 
   // Since using LightWindows, can look for div.dhtmlwindow
@@ -860,30 +912,25 @@ function broadcastMasterUpdate(img, action) {
     const imname = {display: owin};
     const hdl = JS9.GetImage(imname);
 
+    // What stack/cpt is this?
+    const hullinfo = js9_mapping[owin];
+    const key = toKey(hullinfo.stack, hullinfo.cpt);
+
+    // What region ids do we want?
+    const convexId = masterhulls_ids.convex[key][baseConvexIndex];
+    const masterId = masterhulls_ids.master[key][baseMasterIndex];
+
     // stop propogating the onchange signal
     hdl.params.xeqonchange = !hdl.params.xeqonchange;
 
-    // Do we have a convex hull already?
-    // let rs = JS9.GetRegions(convexName, imname);
-    const rs = JS9.GetShapes(convexLayer, convexName, imname);
-    if (rs.length === 0) {
-      var ras = [];
-      var decs = [];
-      for (const wcs of chull_eqpos) {
-        ras.push(wcs.ra);
-        decs.push(wcs.dec);
-      }
-      add_hull_to_js9({ra: ras, dec: decs}, convexOpts,
-                      imname, convexLayer);
-    } else {
-      const hullpts = [];
-      for (const wcs of chull_eqpos) {
-        hullpts.push(JS9.WCSToPix(wcs, imname));
-      }
-
-      JS9.ChangeShapes(convexLayer, convexName, {pts: hullpts},
-                       imname);
+    const hullpts = [];
+    for (const wcs of chull_eqpos) {
+      hullpts.push(JS9.WCSToPix(wcs, imname));
     }
+
+    // What is the id of the convex hull we should change?
+    //
+    JS9.ChangeShapes(convexLayer, convexId, {pts: hullpts}, imname);
 
     // Only adjust the master polygon if this is not the
     // window the user is changing.
@@ -895,7 +942,7 @@ function broadcastMasterUpdate(img, action) {
         pts.push(JS9.WCSToPix(wcs, imname));
       }
 
-      JS9.ChangeShapes(masterLayer, 'master', {pts: pts}, imname);
+      JS9.ChangeShapes(masterLayer, masterId, {pts: pts}, imname);
     }
 
     hdl.params.xeqonchange = !hdl.params.xeqonchange;
@@ -907,20 +954,16 @@ function broadcastMasterUpdate(img, action) {
   // Store the new polygon (in Equatorial coordinates) in the
   // masterhulls_raw and masterhulls_cnvx global variables.
   //
-  // TODO: Handle multiple hulls properly
-  if (masterhulls_raw.length > 1) {
-      alert("INTERNAL ERROR: need to handle multiple hulls");
-  }
-  masterhulls_raw = [{ra: [], dec: []}];
+  masterhulls_raw[baseMasterIndex] = {ra: [], dec: []};
   for (const wcs of action.wcspts) {
-    masterhulls_raw[0].ra.push(wcs.ra);
-    masterhulls_raw[0].dec.push(wcs.dec);
+    masterhulls_raw[baseMasterIndex].ra.push(wcs.ra);
+    masterhulls_raw[baseMasterIndex].dec.push(wcs.dec);
   }
 
-  masterhulls_cnvx = [{ra: [], dec: []}];
+  masterhulls_cnvx[baseConvexIndex] = {ra: [], dec: []};
   for (const wcs of chull_eqpos) {
-    masterhulls_cnvx[0].ra.push(wcs.ra);
-    masterhulls_cnvx[0].dec.push(wcs.dec);
+    masterhulls_cnvx[baseConvexIndex].ra.push(wcs.ra);
+    masterhulls_cnvx[baseConvexIndex].dec.push(wcs.dec);
   }
 
 }
@@ -1120,6 +1163,7 @@ function finalize() {
 // Copy the "saved" master hulls into the "current" master hulls.
 //
 function setupMasters() {
+
   // Store away the current master hull settings for use by
   // addMasterHullToJS9 and handleRegionChange.
   //
