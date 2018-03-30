@@ -279,6 +279,256 @@ def label_hull(ax_trans, hull, label, color='black'):
              transform=ax_trans)
 
 
+def find_hull_limits(stackhulls, hulldata, axscale=0.5):
+    """Return limits of the hulls.
+
+    Parameters
+    ----------
+    stackhulls : list
+        What stack-level hulls form this master hull? Each entry
+        is a dictionary with the keys 'stack' and 'component'.
+    hulldata : dict
+        The hull data indexed by (stack, component).
+    axscale : float, optional
+        The additional space around the hull, as a fraction of the
+        width/height of the hull. This value refers to the delta
+        added to each side (so twice this is added overall). Note
+        that the space added will be more than this fraction for the
+        "smaller" side of the hull, as the plot aspect ratio is
+        maintained.
+
+    Returns
+    -------
+    lims : dict
+        The keys are: 'dmfilter', ...
+
+    """
+
+    ra_lims = []
+    dec_lims = []
+    for shull in stackhulls:
+        key = shull['stack'], shull['component']
+        hull = hulldata[key]
+        eqsrc = hull['eqpos']
+        ra = eqsrc[0]
+        dec = eqsrc[1]
+
+        ra_lims.extend([np.nanmin(ra), np.nanmax(ra)])
+        dec_lims.extend([np.nanmin(dec), np.nanmax(dec)])
+
+    # What are the limits of the hulls?
+    #
+    ra_lims = np.asarray(ra_lims)
+    dec_lims = np.asarray(dec_lims)
+
+    ra_min = ra_lims.min()
+    ra_max = ra_lims.max()
+    dec_min = dec_lims.min()
+    dec_max = dec_lims.max()
+
+    # expand limits on each side
+    #
+    dra = ra_max - ra_min
+    ddec = dec_max - dec_min
+
+    # Enforce a minimum padding distance (which is then
+    # scaled by axscale)
+    #
+    minsep = 45.0 / 3600
+    ddec = max(ddec, minsep)
+
+    # divide or multiply by cos term here?
+    minsep /= np.cos((dec_min + dec_max) * np.pi / (2.0 * 180.0))
+    dra = max(dra, minsep)
+
+    ra_min -= axscale * dra
+    ra_max += axscale * dra
+
+    dec_min -= axscale * ddec
+    dec_max += axscale * ddec
+
+    # Select just the region of interest to try and save memory.
+    #
+    sfilt = utils.make_spatial_filter_range(ra_min, ra_max,
+                                            dec_min, dec_max)
+
+    return {'dmfilter': sfilt,
+            'ra': [ra_min, ra_max],
+            'dec': [dec_min, dec_max]}
+
+
+def label_plot(stack, cpt, bname, axes,
+               hullmap, ensemblemap,
+               lblcol='orange',
+               lblsize=12):
+    """Add labels to a plot of the stack.
+
+    Parameters
+    ----------
+    stack : str
+        The stack name.
+    cpt
+        The component number for the hull.
+    bname : str
+        The band name for the data.
+    axes
+        The plot axes.
+    hullmap : dict
+        The stack-level hull data, stored by the stack id. The values
+        are those returned by read_hulls_from_mrgsrc3.
+    ensemblemap : dict
+        The keys are stack ids, and the values are the STKIDxxx
+        value (i.e. the integer value of xxx).
+
+    """
+
+    # Convert from stack name to STKIDxxx value and add in
+    # the component number.
+    #
+    stacklbl = "{:03d}.{:02d}".format(ensemblemap[stack], cpt)
+
+    plt.text(0.05, 0.9, "band={}".format(bname),
+             color=lblcol, fontsize=lblsize,
+             transform=axes.transAxes)
+
+    plt.text(0.95, 0.05, stacklbl, horizontalalignment='right',
+             color=lblcol, fontsize=lblsize,
+             transform=axes.transAxes)
+
+    # Label if the stack-level hull was manually-modified.
+    #
+    manadj = None
+    for hull in hullmap[stack]:
+        if hull['component'] != cpt:
+            continue
+
+        assert manadj is None
+        manadj = hull['mancode'] != 0
+
+        # should probably break here
+
+    assert manadj is not None
+    if manadj:
+        plt.text(0.95, 0.9, "ManAdj", horizontalalignment='right',
+                 color=lblcol, fontsize=lblsize,
+                 transform=axes.transAxes)
+
+
+def add_hulls_from_other_stacks(stack, stacks, hullmap, axes,
+                                color='white'):
+    """Draw on stack hulls from other stacks in this ensemble.
+
+    Parameters
+    ----------
+    stack : str
+        The stack being shown (so hulls from this stack are skipped).
+    stacks : list of str
+        All the stacks in the ensemble which have hulls.
+    hullmap : dict
+        The stack-level hull data, stored by the stack id. The values
+        are those returned by read_hulls_from_mrgsrc3.
+    axes
+        The plot axes.
+    color : str, optional
+        The color to draw the hulls.
+    """
+
+    ax_trans = axes.get_transform('world')
+    for ostack in stacks:
+        if ostack == stack:
+            continue
+
+        for hull in hullmap[ostack]:
+            draw_hull(ax_trans, hull, color, 1, 'dotted',
+                      opacity=0.2)
+
+
+def add_hulls(stack, cpt, hullmap, master_hull, qahulls, axes,
+              master_color='gold',
+              qa_color='cyan'):
+    """Draw the hulls for this stack.
+
+    draw the hulls for this stack
+
+    draw the other hulls first, as reference
+    (i.e. those from other stacks)
+
+    NOTE: this draws on all hulls, so can be useful
+          if nearby ones overlap.
+
+    Parameters
+    ----------
+    stack : str
+        The stack name.
+    cpt
+        The component number for the hull.
+    hullmap : dict
+        The stack-level hull data, stored by the stack id. The values
+        are those returned by read_hulls_from_mrgsrc3.
+    master_hull: dict
+        Contains the master hull: fields are 'master_id', 'status',
+        and 'eqpos'. The 'status' field should be one of:
+        'todo', 'okay', 'qa[-...]'.
+    qahulls : None or list of dict, optional
+        This is only used if master_hull['status'] is set to 'qa[-...]'.
+        Each entry represents a hull, and has the 'eqpos' field
+        which contains the polygon.
+    axes
+        The plot axes.
+    master_color : str, optional
+        The color for the master hull.
+    qa_color : str, optional
+        The color for any QA hulls.
+    """
+
+    ax_trans = axes.get_transform('world')
+
+    # Draw the hull for this component in orange and the
+    # others in the stack as a red-ish color. Trying to
+    # match masterhull.js behavior.
+    #
+    for hull in hullmap[stack]:
+        if hull['component'] == cpt:
+            hullcol = 'orange'
+        else:
+            hullcol = '#cc3333'
+
+        draw_hull(ax_trans, hull, hullcol, 2, 'solid')
+
+    # NOTE: these are drawn thinner than the stack-level hulls so
+    # they do not obscure them (for cases when the two contours
+    # are the same or very similar).
+    #
+    if master_hull['status'].startswith('qa'):
+        for qahull in qahulls:
+            draw_hull(ax_trans, qahull, qa_color, 1, 'dashed')
+    else:
+        draw_hull(ax_trans, master_hull, master_color, 1, 'solid')
+
+
+def labelize_plot(axes, add_labels):
+    """Do we add or hide plot labels?
+
+    Parameters
+    ----------
+    axes
+        The plot axes.
+    add_labels : bool
+        If True then the axes are labelled, otherwise they
+        are hidden.
+
+    """
+
+    if add_labels:
+        axes.coords['ra'].set_major_formatter('hh:mm:ss')
+        axes.coords['dec'].set_major_formatter('dd:mm:ss')
+    else:
+        for l in ['ra', 'dec']:
+            axes.coords[l].set_ticks_visible(False)
+            axes.coords[l].set_ticklabel_visible(False)
+            axes.coords[l].set_axislabel('')
+
+
 def draw_hulls_and_images(master_hull,
                           stackhulls,
                           hullmap,
@@ -410,53 +660,9 @@ def draw_hulls_and_images(master_hull,
     # they should all, by definition, be no larger than the
     # stack-level hulls.
     #
-    ra_lims = []
-    dec_lims = []
-    for shull in stackhulls:
-        key = shull['stack'], shull['component']
-        hull = hulldata[key]
-        eqsrc = hull['eqpos']
-        ra = eqsrc[0]
-        dec = eqsrc[1]
-
-        ra_lims.extend([np.nanmin(ra), np.nanmax(ra)])
-        dec_lims.extend([np.nanmin(dec), np.nanmax(dec)])
-
-    # What are the limits of the hulls?
-    #
-    ra_lims = np.asarray(ra_lims)
-    dec_lims = np.asarray(dec_lims)
-
-    ra_min = ra_lims.min()
-    ra_max = ra_lims.max()
-    dec_min = dec_lims.min()
-    dec_max = dec_lims.max()
-
-    # expand limits on each side
-    #
-    dra = ra_max - ra_min
-    ddec = dec_max - dec_min
-
-    # Enforce a minimum padding distance (which is then
-    # scaled by axscale)
-    #
-    minsep = 45.0 / 3600
-    ddec = max(ddec, minsep)
-
-    # divide or multiply by cos term here?
-    minsep /= np.cos((dec_min + dec_max) * np.pi / (2.0 * 180.0))
-    dra = max(dra, minsep)
-
-    ra_min -= axscale * dra
-    ra_max += axscale * dra
-
-    dec_min -= axscale * ddec
-    dec_max += axscale * ddec
-
-    # Select just the region of interest to try and save memory.
-    #
-    sfilt = utils.make_spatial_filter_range(ra_min, ra_max,
-                                            dec_min, dec_max)
+    data_lims = find_hull_limits(stackhulls, hulldata,
+                                 axscale=axscale)
+    sfilt = data_lims['dmfilter']
 
     # Find the event files for the stacks. Note that we check
     # all files and then report errors at the end (so you don't
@@ -521,7 +727,6 @@ def draw_hulls_and_images(master_hull,
     nplots_in_page = None
     fig = None
 
-    lblcol = 'orange'
     lblsize = 12
 
     def sqrtwrapper(vmin=None, vmax=None, clip=False):
@@ -798,90 +1003,20 @@ def draw_hulls_and_images(master_hull,
         #
         draw_xmdat3(xmdat3map[stack], ax, ax_trans)
 
-        # Convert from stack name to STKIDxxx value and add in
-        # the component number.
-        #
-        stacklbl = "{:03d}.{:02d}".format(ensemblemap[stack], cpt)
+        label_plot(stack, cpt, bname, ax,
+                   hullmap, ensemblemap)
 
-        plt.text(0.05, 0.9, "band={}".format(bname),
-                 color=lblcol, fontsize=lblsize,
-                 transform=ax.transAxes)
-
-        plt.text(0.95, 0.05, stacklbl, horizontalalignment='right',
-                 color=lblcol, fontsize=lblsize,
-                 transform=ax.transAxes)
-
-        # Label if the stack-level hull was manually-modified.
-        #
-        manadj = None
-        for hull in hullmap[stack]:
-            if hull['component'] != cpt:
-                continue
-
-            assert manadj is None
-            manadj = hull['mancode'] != 0
-
-            # should probably break here
-
-        assert manadj is not None
-        if manadj:
-            plt.text(0.95, 0.9, "ManAdj", horizontalalignment='right',
-                     color=lblcol, fontsize=lblsize,
-                     transform=ax.transAxes)
-
-        # draw the hulls for this stack
-        #
-        # draw the other hulls first, as reference
-        # (i.e. those from other stacks)
-        #
-        # NOTE: this draws on all hulls, so can be useful
-        #       if nearby ones overlap.
-        #
-        # ocolor = 'steelblue'
-        ocolor = 'white'
         if show_other_stack_hulls:
-            for ostack in stacks:
-                if ostack == stack:
-                    continue
+            add_hulls_from_other_stacks(stack, stacks, hullmap, ax)
 
-                for hull in hullmap[ostack]:
-                    draw_hull(ax_trans, hull, ocolor, 1, 'dotted',
-                              opacity=0.2)
-
-        # Draw the hull for this component in orange and the
-        # others in the stack as a red-ish color. Trying to
-        # match masterhull.js behavior.
-        #
-        for hull in hullmap[stack]:
-            if hull['component'] == cpt:
-                hullcol = 'orange'
-            else:
-                hullcol = '#cc3333'
-
-            draw_hull(ax_trans, hull, hullcol, 2, 'solid')
-
-        # do we have a master hull to add?
-        #
-        # NOTE: these are drawn thinner than the stack-level hulls so
-        # they do not obscure them (for cases when the two contours
-        # are the same or very similar).
-        #
-        if master_hull['status'].startswith('qa'):
-            for qahull in qahulls:
-                draw_hull(ax_trans, qahull, qa_color, 1, 'dashed')
-        else:
-            draw_hull(ax_trans, master_hull, master_color, 1, 'solid')
+        add_hulls(stack, cpt, hullmap,
+                  master_hull, qahulls, ax,
+                  master_color=master_color,
+                  qa_color=qa_color)
 
         # clean up the plot.
         #
-        if plot_idx == axplot:
-            ax.coords['ra'].set_major_formatter('hh:mm:ss')
-            ax.coords['dec'].set_major_formatter('dd:mm:ss')
-        else:
-            for l in ['ra', 'dec']:
-                ax.coords[l].set_ticks_visible(False)
-                ax.coords[l].set_ticklabel_visible(False)
-                ax.coords[l].set_axislabel('')
+        labelize_plot(ax, plot_idx == axplot)
 
     # Don't forget to save the last page.
     save_plot(page_idx)
