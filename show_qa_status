@@ -1,0 +1,490 @@
+#!/usr/bin/env python
+# -*- mode: python -*-
+
+"""
+Usage:
+
+  ./show_qa_status [basedir]
+
+Aim:
+
+When run in the directory containing the output of run_qa_server.py -
+i.e. ie the directory that it is run in - list the user outputs.
+
+If basedir is given then a "readable" summary of the results is given,
+broken down into "finished" and "incomplete" ensembles. If basedir is
+not given then a quick summary view is given listing each master id
+and its setting. This is to allow easy comparison between users (to
+check for agreement or differences).
+
+Notes:
+
+For now deal with revision 001 only as do not have multi-revision
+files (yet?).
+
+"""
+
+import glob
+import json
+import os
+import time
+
+from collections import defaultdict
+
+
+import pycrates
+
+
+def read_json(infile):
+    """Return JSON from input file."""
+
+    with open(infile, 'r') as fh:
+        cts = fh.read()
+        return json.loads(cts)
+
+
+# Represent a user's decision for a master hull, while recording
+# the initial suggestion from the proposed stage.
+#
+class Decision(object):
+    """Record the user action for a master hull.
+    """
+
+    def __init__(self, proposed, user=None):
+        self._proposed = proposed
+        self._user = user
+
+    def status(self):
+        """Return the status as determined by the user.
+
+        The value is returned as a string, so None becomes 'None'.
+        """
+        return str(self._user)
+
+    def overridden(self):
+        """Report True if the user has over-turned a QA case."""
+
+        if self._user is None or self._proposed == "todo":
+            return False
+
+        return True
+
+
+def read_user_action(hullfile):
+    """Read the useraction setting for the hull.
+
+    Parameters
+    ----------
+    hullfile : str
+        The name of the JSON file containing the user's decision
+        for this hull. It must contain a useraction field,
+        which may be set to "".
+
+    Returns
+    -------
+    action : str or None
+        If the user has not made a decision then None is
+        returned. None is also returned if the file
+        does not exist.
+
+    Notes
+    -----
+    The return value of None is overloaded here; to mean no
+    file or no decision. That is probably okay for our purpose.
+
+    """
+
+    if not os.path.isfile(hullfile):
+        return None
+
+    # Require the useraction field
+    js = read_json(hullfile)
+    action = js['useraction']
+    if action.strip() == "":
+        return None
+
+    return action
+
+
+# TODO: handle multiple revisions
+def parse_ensembledir(ensdir, ensemble, mhulls):
+    """What has the user decided for this ensemble?
+
+    Parameters
+    ----------
+    ensdir : str
+        The path to the ensemble directory, containing the user input.
+    ensemble : str
+        The name of the ensemble.
+    mhulls : dict
+        The output of parse_master_hull for this ensemble.
+
+    Returns
+    -------
+    status, ensdict : bool, dict
+        status is True if there is a user answer for each master id;
+        that is, the user has finished reviewing this ensemble, *not*
+        that this ensemble is ready for source properties pipeline.
+        The ensdict has keys of master id and values are Decision
+        objects. If status is None then there are no user decisions
+        for this ensemble.
+
+    """
+
+    revstr = "v001"
+
+    # Can I have a hull file (hull.<ens>.<mid>.<revision>.json)
+    # without a field.<ens>.<revision>.json file?
+    #
+    # Look for the decisions on each master hull, then
+    # do we need to check the field status?
+    #
+    status = {}
+    finished = True
+    found = False
+    for mid, mstatus in mhulls.items():
+        infile = "hull.{}.{:03d}.{}.json".format(ensemble,
+                                                 mid,
+                                                 revstr)
+
+        hullfile = os.path.join(ensdir, infile)
+        useraction = read_user_action(hullfile)
+        if useraction is None:
+            finished = False
+        else:
+            found = True
+
+        status[mid] = Decision(mstatus, useraction)
+
+    if not found:
+        finished = None
+
+    return finished, status
+
+
+# TODO: handle multiple revisions
+def parse_ensembledir_all(ensdir, ensemble):
+    """What has the user decided for this ensemble?
+
+    Parameters
+    ----------
+    ensdir : str
+        The path to the ensemble directory, containing the user input.
+    ensemble : str
+        The name of the ensemble.
+
+    Returns
+    -------
+    ensdict : dict
+        The ensdict has keys of master id and values are strings.
+        Only master hulss with a user action are returned.
+        The dictionary can be empty.
+
+    """
+
+    revstr = "v001"
+
+    # Can I have a hull file (hull.<ens>.<mid>.<revision>.json)
+    # without a field.<ens>.<revision>.json file?
+    #
+    # Look for the decisions on each master hull, then
+    # do we need to check the field status?
+    #
+    pat = "hull.{}.*.{}.json".format(ensemble, revstr)
+    pat = os.path.join(ensdir, pat)
+    out = {}
+    for hullfile in glob.glob(pat):
+        js = read_json(hullfile)
+        if js is None:
+            continue
+
+        useraction = js['useraction']
+        if useraction.strip() == '':
+            continue
+
+        mid = js['masterid']
+        out[mid] = useraction
+
+    return out
+
+
+def parse_workdir(workdir, basedir):
+    """Report on the user status.
+
+    Parameters
+    ----------
+    workdir : str
+        The path to the work directory, containing the user input.
+    basedir : str
+        The path to the "proposed" directory, containing the data the
+        user is reviewing.
+
+    Returns
+    -------
+    ntotal, finished, incomplete: int, dict, dict
+        The total number of ensembles, then:
+        The ensembles that have been finished (the user has reviewed
+        all master hulls) and those that have been partially reviewed.
+        The keys are the ensemble names and the values are dicts with
+        key of master id and values of Decision objects.
+
+    """
+
+    pat = os.path.join(workdir, 'ens*_001')
+    dirs = glob.glob(pat)
+    ensdirs = [d for d in dirs if os.path.isdir(d)]
+
+    ensembles = [ensdir.split('/')[-1] for ensdir in ensdirs]
+    ntotal, base = parse_basedir(ensembles, basedir)
+
+    finished = {}
+    incomplete = {}
+    for ensdir in ensdirs:
+        ensemble = ensdir.split('/')[-1]
+
+        assert ensemble not in finished
+        assert ensemble not in incomplete
+        status, data = parse_ensembledir(ensdir, ensemble,
+                                         base[ensemble])
+
+        # We found a directory but no hulls have a user action
+        if status is None:
+            continue
+
+        if status:
+            store = finished
+        else:
+            store = incomplete
+
+        store[ensemble] = data
+
+    return ntotal, finished, incomplete
+
+
+def parse_workdir_all(workdir):
+    """Report on the user status.
+
+    Parameters
+    ----------
+    workdir : str
+        The path to the work directory, containing the user input.
+
+    Returns
+    -------
+    ensembles : dict
+        The results for the master hulls. The value is a dict
+        which has keys of master id and string values. Only
+        master ids with a user action are returned (so it may not
+        include all masters in an ensemble).
+
+    """
+
+    pat = os.path.join(workdir, 'ens*_001')
+    dirs = glob.glob(pat)
+    ensdirs = [d for d in dirs if os.path.isdir(d)]
+    out = {}
+    for ensdir in ensdirs:
+        ensemble = ensdir.split('/')[-1]
+
+        assert ensemble not in out
+        out[ensemble] = parse_ensembledir_all(ensdir, ensemble)
+
+    return out
+
+
+def parse_master_hull(hullfile):
+    """Report on the proposed set of hulls for this ensemble.
+
+    Parameters
+    ----------
+    hullfile : str
+        The name of the master hull file.
+
+    Returns
+    -------
+    ensemble, hulls : str, dict
+        The ensemble name and then a dict where the keys are the
+        master ids and the values are the status setting.
+    """
+
+    infile = "{}[HULLLIST][cols Master_Id,status]".format(hullfile)
+    cr = pycrates.read_file(infile)
+    ensemble = cr.get_key_value('ENSEMBLE')
+    assert ensemble is not None, "ENSEMBLE: {}".format(infile)
+    out = {}
+    for mid, status in zip(cr.Master_Id.values, cr.STATUS.values):
+        assert mid not in out
+        out[mid] = status
+
+    return ensemble, out
+
+
+# TODO: handle multiple revisions
+def parse_basedir(ensembles, basedir):
+    """Report on the proposed set of hulls.
+
+    Parameters
+    ----------
+    ensembles : list of str
+        The ensembles we are interested in.
+    basedir : str
+        The path to the "proposed" directory, containing the data the
+        user is reviewing.
+
+    Returns
+    -------
+    ntotal, workdict : int, dict
+        The total number of master hull files.
+        The keys are the ensembles. The values are a dict where the
+        key is the master id and the value is the status in the
+        master hull file. Only ensembles in the input array are
+        included in this dictionary.
+    """
+
+    pat = os.path.join(basedir, 'ens*_001', 'master_hulls*fits')
+    mhulls = glob.glob(pat)
+
+    out = {}
+    for mhull in mhulls:
+        ensemble = mhull.split('/')[-2]
+        if ensemble not in ensembles:
+            continue
+
+        ensemble2, hulls = parse_master_hull(mhull)
+        assert ensemble == ensemble2
+        assert ensemble not in out
+        out[ensemble] = hulls
+
+    return len(mhulls), out
+
+
+def display_summary(nensembles, finished, incomplete):
+    """Sumamrize the progress.
+
+    This is intended to give an overview, in a digestible
+    form.
+    """
+
+    nfinished = len(finished)
+    nincomplete = len(incomplete)
+
+    print("User               : {}".format(os.getlogin()))
+    print("Time               : {}".format(time.asctime()))
+    print("Number of ensembles: {}".format(nensembles))
+    print("Number reviewed    : {}".format(nfinished))
+    print("Number incomplete  : {}".format(nincomplete))
+    print("")
+
+    if nfinished > 0:
+        print("Finished ensembles:")
+        print("#     ensemble  nmasters  (status,count)")
+
+        overridden = False
+        ensembles = sorted(list(finished.keys()))
+        for ens in ensembles:
+            mids = finished[ens]
+            nmasters = len(mids)
+            status = defaultdict(int)
+            for decision in mids.values():
+                overridden |= decision.overridden()
+                status[decision.status()] += 1
+
+            xs = sorted(list(status.items()),
+                        key=lambda x: x[1],
+                        reverse=True)
+            ys = ["{},{}".format(s, n) for s, n in xs]
+            out = "{:14s}     {:2d}      {}".format(ens, nmasters,
+                                                    ";".join(ys))
+            print(out)
+            if overridden:
+                print("  - at least one automatic QA was overridden")
+
+        print("")
+
+    if nincomplete > 0:
+        print("Incomplete ensembles:")
+        print("#     ensemble  nmasters  todo  (status,count)")
+
+        overridden = False
+        ensembles = sorted(list(incomplete.keys()))
+        for ens in ensembles:
+            mids = incomplete[ens]
+            nmasters = len(mids)
+            nmissing = 0
+            status = defaultdict(int)
+            for decision in mids.values():
+                overridden |= decision.overridden()
+                if decision.status() == "None":
+                    nmissing += 1
+                else:
+                    status[decision.status()] += 1
+
+            xs = sorted(list(status.items()),
+                        key=lambda x: x[1],
+                        reverse=True)
+            ys = ["{},{}".format(s, n) for s, n in xs]
+            out = "{:14s}     {:2d}      {:2d}    {}".format(ens,
+                                                             nmasters,
+                                                             nmissing,
+                                                             ";".join(ys))
+            print(out)
+            if overridden:
+                print("  - at least one automatic QA was overridden")
+
+        print("")
+
+
+def display_details(res):
+    """List the results for each ensemble.
+
+    This is intended to make it easy to compare results between
+    reviewers.
+
+    """
+
+    # It's important to have a reproducible order to allow easy
+    # comparison, so just rely on sorted.
+    #
+    ensembles = sorted(list(res.keys()))
+
+    print("# User : {}".format(os.getlogin()))
+    print("# Time : {}".format(time.asctime()))
+    print("#")
+    print("# ensemble     masterid status")
+
+    for ens in ensembles:
+        ans = res[ens]
+        for mid in sorted(list(ans.keys())):
+            status = ans[mid]
+            print("{:14s}    {:2d}    {}".format(ens, mid, status))
+
+
+help_str = "What did a QA reviwer decide?"
+
+
+if __name__ == "__main__":
+
+    import sys
+
+    import argparse
+
+    parser = argparse.ArgumentParser(description=help_str,
+                                     prog=sys.argv[0])
+
+    parser.add_argument("basedir", nargs='?', default=None,
+                        help="The data directory")
+
+    args = parser.parse_args(sys.argv[1:])
+
+    workdir = os.getcwd()
+    if args.basedir is None:
+        user = parse_workdir_all(workdir)
+        display_details(user)
+
+    else:
+        basedir = os.path.abspath(args.basedir)
+        if not os.path.isdir(basedir):
+            raise ValueError("{} is not a directory!".format(basedir))
+
+        ntotal, finished, incomplete = parse_workdir(workdir, basedir)
+        display_summary(ntotal, finished, incomplete)
