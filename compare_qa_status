@@ -1,0 +1,208 @@
+#!/usr/bin/env python
+# -*- mode: python -*-
+
+"""
+Usage:
+
+  ./compare_qa_status file1 file2 ...
+
+Aim:
+
+Compare the outputs of show_qa_status (when run in the "simple" mode,
+i.e. without the optional directory argument). The files are the
+output of show_qa_status for each user. There must be at least two.
+
+A summary of the results are shown.
+
+"""
+
+import glob
+import json
+import os
+import time
+
+from collections import defaultdict
+
+def read_user(infile):
+    """Read a users choices, as reported by show_qa_status.
+
+    Parameters
+    ----------
+    infile : str
+        The name of the file.
+
+    Returns
+    -------
+    user : dict
+        Keys are "user" and "masters", where masters is
+        itself a dict, with keys of (ensemble, masterid) and
+        value of status.
+
+    """
+
+    userToken = '# User : '
+
+    user = None
+    masters = {}
+    with open(infile, mode='r') as fh:
+
+        for l in fh.readlines():
+            l = l.strip()
+            if user is None:
+                if l.startswith(userToken):
+                    user = l[len(userToken):]
+                    continue
+
+                emsg = "First line of {} ".format(infile) + \
+                    "must start with '{}'".format(userToken)
+                raise ValueError(emsg)
+
+            if l.startswith('#'):
+                continue
+
+            toks = l.split()
+            if len(toks) != 3:
+                raise ValueError("Invalid line: '{}'".format(l))
+
+            ensemble = toks[0]
+            masterid = toks[1]
+            status = toks[2]
+
+            key = (ensemble, masterid)
+            if key in masters:
+                raise ValueError("Multiple occurrences of: " +
+                                 "{}".format(key))
+
+            masters[key] = status
+
+    return {'user': user, 'masters': masters}
+
+
+def all_agree(out):
+    """All users agree on these hulls.
+
+    """
+
+    print("# All users agree")
+    print("#")
+    print("#     ensemble  masterid  status")
+    for key, res in out:
+        assert len(res) == 1, "key={}".format(key)
+        status = list(res.keys())[0]
+        print("{}     {:2s}     {}".format(key[0], key[1], status))
+
+
+def partial_agree(nagree, out):
+    """Some users agree on these hulls.
+
+    """
+
+    print("# {} users agree".format(nagree))
+    print("#")
+    print("#     ensemble  masterid  statii")
+    for key, res in out:
+        statii = [(s, len(us)) for s, us in res.items()]
+        statii = sorted(statii, key=lambda x: x[1], reverse=True)
+        s = ["{} ({})".format(*s) for s in statii]
+        print("{}     {:2s}     {}".format(key[0], key[1],
+                                           ", ".join(s)))
+
+
+def no_agree(out):
+    """No users agree on these hulls.
+
+    """
+
+    print("# No users agree")
+    print("#")
+    print("#     ensemble  masterid  statii")
+    for key, res in out:
+        statii = sorted(list(res.keys()))
+        s = statii
+        print("{}     {:2s}     {}".format(key[0], key[1],
+                                           ", ".join(s)))
+
+
+def doit(infiles):
+    """Compare the user QA results.
+
+    Parameters
+    ----------
+    infiles : list of str
+        The files containing the output of shoq_qa_status. The
+        same user is not expected to appear multiple times.
+    """
+
+    nusers = len(infiles)
+    users = [read_user(infile) for infile in infiles]
+
+    # safety check
+    names = [u['user'] for u in users]
+    if nusers != len(set(names)):
+        print("WARNING: user names are not unique!")
+
+    # What master hulls do we have
+    keys = set([])
+    for user in users:
+        keys.update(set(list(user['masters'].keys())))
+
+    # Each master hull is labelled by its key and contains
+    # a dictionary where the keys are the status and the
+    # values are the list of users who selected that status.
+    #
+    results = defaultdict(lambda: defaultdict(list))
+    for user in users:
+        username = user['user']
+        for key, status in user['masters'].items():
+            store = results[key]
+            store[status].append(username)
+
+    # Now identify the sub-groups we have, in terms of the
+    # maximum number of agreements we have for the hull.
+    #
+    # Could say
+    #   out = {i: [] for i in range(1, nusers + 1)}
+    #
+    out = defaultdict(list)
+    for key in sorted(list(results.keys())):
+        store = results[key]
+        nagrees = [len(s) for s in store.values()]
+        nagree = max(nagrees)
+        out[nagree].append((key, store))
+
+    nagrees = sorted(list(out.keys()), reverse=True)
+
+    first = True
+    for nagree in nagrees:
+        if first:
+            first = False
+        else:
+            print("")
+
+        if nagree == nusers:
+            all_agree(out[nagree])
+        elif nagree > 1:
+            partial_agree(nagree, out[nagree])
+        else:
+            no_agree(out[nagree])
+
+
+help_str = "How do the CHS QA reviews compare?"
+
+
+if __name__ == "__main__":
+
+    import sys
+    import argparse
+
+    parser = argparse.ArgumentParser(description=help_str,
+                                     prog=sys.argv[0])
+
+    parser.add_argument("infile", nargs='+',
+                        help="The input files; must be >= 2")
+
+    args = parser.parse_args(sys.argv[1:])
+    if len(args.infile) < 2:
+        parser.error('too few arguments')
+
+    doit(args.infile)
