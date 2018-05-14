@@ -1,0 +1,186 @@
+#!/usr/bin/env python
+# -*- mode: python -*-
+
+"""
+Usage:
+
+  ./show_qa_comments [hull|ensemble]
+
+Aim:
+
+When run in the directory containing the output of run_qa_server.py -
+i.e. ie the directory that it is run in - list the user comments.
+
+The default is for the per-hull comments, but this can be switched
+to the per-ensemble comments from the command line.
+
+Notes:
+
+For now deal with revision 001 only as do not have multi-revision
+files (yet?).
+
+"""
+
+import glob
+import json
+import os
+import time
+
+from collections import defaultdict
+
+
+import pycrates
+
+
+def read_json(infile):
+    """Return JSON from input file."""
+
+    with open(infile, 'r') as fh:
+        cts = fh.read()
+        return json.loads(cts)
+
+
+def read_user_notes(jsonfile):
+    """Read the usernotes setting from the JSON file.
+
+    Parameters
+    ----------
+    jsonfile : str
+        The name of the JSON file containing the user's comments,
+        which are in the usernotes field (may be null or "").
+
+    Returns
+    -------
+    comment : str or None
+        The user's comments (str can not be empty if it is
+        returned). None may mean that jsonfile does not exist.
+
+    Notes
+    -----
+    The return value of None is overloaded here; to mean no
+    file or no decision. That is probably okay for our purpose.
+
+    """
+
+    if not os.path.isfile(jsonfile):
+        return None
+
+    # Require the usernotes field
+    js = read_json(jsonfile)
+    comment = js['usernotes']
+    if comment is None or comment.strip() == "":
+        return None
+
+    return comment
+
+
+def display_hull_comments(ensdirs, ensembles):
+    """Display the comments the user has made on the hulls."""
+
+    def splitit(infile):
+        """Extract hull and version number from infile."""
+
+        toks = infile.split('/')[-1].split('.')
+        assert len(toks) == 5, str(len(toks))
+
+        hull = int(toks[2])
+        ver = int(toks[3][1:])
+        return (hull, ver, infile)
+
+
+    for ensemble, ensdir in zip(ensembles, ensdirs):
+
+        pat = os.path.join(ensdir,
+                           'hull.{}.*.v*.json'.format(ensemble))
+        jsfiles = glob.glob(pat)
+        if jsfiles == []:
+            continue
+
+        # Pick the highest version number for each hull,
+        # order by hull number. Rely on ordering of tuples,
+        # since the first two elements are integers.
+        #
+        # The list is reversed, so the first entry for each
+        # hull number is the highest version. If there is no
+        # comment in the highest version then we *do not* look
+        # at comments in earlier versions.
+        #
+        files = sorted([splitit(f) for f in jsfiles], reverse=True)
+
+        seen = set([])
+        wanted = []
+        for hull, ver, fname in files:
+            if hull in seen:
+                continue
+            wanted.append((hull, ver, fname))
+
+        wanted.reverse()
+
+        for hull, ver, fname in wanted:
+            comment = read_user_notes(fname)
+            if comment is None:
+                continue
+
+            print("# Ensemble {}  Hull {:03d}  Version {:03d}".format(
+                ensemble, hull, ver))
+            print(comment)
+            print("-------------------------------------------")
+            print("")
+
+
+
+def display_ensemble_comments(ensdirs, ensembles):
+    """Display the comments the user has made on the ensembles."""
+
+    for ensemble, ensdir in zip(ensembles, ensdirs):
+
+        pat = os.path.join(ensdir,
+                           'field.{}.v*.json'.format(ensemble))
+        jsfiles = glob.glob(pat)
+        if jsfiles == []:
+            continue
+
+        # pick the highest version number; hard code the location
+        vs = [(int(f.split('/')[-1].split('.')[-2][1:]), f)
+              for f in jsfiles]
+        vs = sorted(vs, reverse=True, key=lambda x: x[0])
+        jsver, jsfile = vs[0]
+
+        comment = read_user_notes(jsfile)
+        if comment is None:
+            continue
+
+        print("# Ensemble {}  version {:03}".format(ensemble, jsver))
+        print(comment)
+        print("-------------------------------------------")
+        print("")
+
+
+help_str = "What did a QA reviwer comment on?"
+
+
+if __name__ == "__main__":
+
+    import sys
+
+    import argparse
+
+    parser = argparse.ArgumentParser(description=help_str,
+                                     prog=sys.argv[0])
+
+    parser.add_argument("comments", nargs='?', default="hull",
+                        choices=["hull", "ensemble"],
+                        help="The comment type: default %(default)s")
+
+    args = parser.parse_args(sys.argv[1:])
+
+    workdir = os.getcwd()
+    pat = os.path.join(workdir, 'ens*_001')
+    dirs = glob.glob(pat)
+    ensdirs = sorted([d for d in dirs if os.path.isdir(d)])
+    ensembles = [ensdir.split('/')[-1] for ensdir in ensdirs]
+
+    if args.comments == 'hull':
+        display_hull_comments(ensdirs, ensembles)
+    else:
+        display_ensemble_comments(ensdirs, ensembles)
