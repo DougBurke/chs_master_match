@@ -3,7 +3,8 @@
 """
 Usage:
 
-  ./chs_create_initial_masters.py ensemblefile ensemble outdir
+  ./chs_create_initial_masters.py
+      svdqafile centroidfile ensemblefile ensemble outdir
       --mrgsrc3dir <dirname>
       --compzero n
 
@@ -23,6 +24,15 @@ the stack ids.
 If there are no hulls in the ensemble then the file outdir/NOHULLS
 is created (it is an error if this file already exists) and the script
 exits with a status of 0.
+
+The svdqafile argument points to a file which lists all the stacks
+that went to SVD QA, one stack per line. The first column is used.
+This file is used to fill out the STKSVDQA column.
+
+The centroidfile is a list of stack,component,use_centroid lines
+which indicate which stack-level hulls to use in the centroid
+calculation. Any stack-level hull not in this file is assumed
+to be included.
 
 The compzero value is added to the component numbers of the stack-level
 hulls to create the COMPONENT column of the HULLMATCH block. It is
@@ -55,8 +65,8 @@ created for each hull: stack, master, and qa.
 Notes
 -----
 
-The Master_Id values are *NOT* guaranteed to be consistent from run to
-run, even if the data has not changed.
+The Master_Id values should now be consistent from run to run
+(assuming that the data has not changed).
 
 It does not deal nicely with merged hulls that are not 'okay' or 'qa';
 e.g. if there is an error creating the hull.
@@ -127,6 +137,52 @@ def find_ensemble_stacks(ensemblefile, ensemble):
     return out
 
 
+def get_revision(crate):
+    """Return the REVISION of this file.
+
+    Parameters
+    ----------
+    crate : a pycrates crate
+        The block to use.
+
+    Returns
+    -------
+    revision : int
+        The revision number.
+
+    Notes
+    -----
+    At the moment the revision number is extracted from the file
+    name (the Nxxx part) rather than using the REVISION keyword as
+    it is not clear to me the latter has much discriminatory power.
+    The file name (not including path) must begin with the STACK_ID
+    value and then followed with "N\d\d\d_". At the time of writing
+    (2018-06-19) Joe has confirmed that mrgsrc3 files are not
+    guaranteed to have the correct REVISION value, although this
+    should be fixed once the stack has passed through the source
+    properties pipeline.
+    """
+
+    infile = crate.get_filename()
+    basename = os.path.basename(infile)
+
+    stackname = crate.get_key_value('STACK_ID')
+    assert stackname is not None, infile
+    assert basename.startswith(stackname + 'N'), \
+        'infile={} stackname={}'.format(infile, stackname)
+
+    s = len(stackname) + 1
+    assert basename[s + 3] == '_', \
+        'infile={}  char={}'.format(infile, basename[s + 3])
+
+    vstr = basename[s : s + 3]
+    try:
+        return int(vstr)
+    except ValueError:
+        raise ValueError("Unexpected version number " +
+                         "{} in {}".format(vstr, infile))
+
+
 def read_hulls(stack, mrgsrc3dir):
     """Read in the hulls for the stack.
 
@@ -143,11 +199,14 @@ def read_hulls(stack, mrgsrc3dir):
     -------
     hulls : list of dict
         The hull information. Each element is a hull, containing
-        keys: stack, component, transform, pos, eqpos, area, infile.
+        keys: stack, component, infile, mrgsrc3rev, transform,
+        area, eband, likelihood, man_code, pos, and eqpos.
         The coordinates are 2D (2, npts) and have been filtered
         to ensure that there are no non-finite numbers, and that
         the region is closed. The area is the area of the polygon
-        in square arcsec.
+        in square arcsec. The mrgsrc3rev field is the "revision" of
+        the mrgsrc3 file (although not guaranteed to be the value of
+        the REVISION keyword in this file).
 
     Raises
     ------
@@ -179,15 +238,20 @@ def read_hulls(stack, mrgsrc3dir):
     # One pixel in arcsec
     pixsize = 3600.0 * transform.get_parameter_value('CDELT')[1]
 
+    # What revision of the mrgsrc3 file is this?
+    #
+    revnum = get_revision(cr)
+
     # For now it is easier to deal with the MAN_CODE as a byte
     # rather than a bit array, so switch.
     #
     cr.MAN_CODE.convert_bits_to_bytes()
 
     out = []
-    for cpt, eband, mancode, pos, eqsrc in \
+    for cpt, eband, lhood, mancode, pos, eqsrc in \
             zip(cr.COMPONENT.values.copy(),
                 cr.EBAND.values.copy(),
+                cr.LIKELIHOOD.values.copy(),
                 cr.MAN_CODE.values.copy(),
                 cr.POS.values.copy(),
                 cr.get_column('EQSRC').values.copy()):
@@ -207,9 +271,11 @@ def read_hulls(stack, mrgsrc3dir):
         out.append({'stack': stack,
                     'component': cpt,
                     'infile': infile,
+                    'mrgsrc3rev': revnum,
                     'transform': transform,
                     'area': area_pixels * pixsize * pixsize,
                     'eband': eband,
+                    'likelihood': lhood,
                     # although converted to a byte, it is still a
                     # vector column, although only of length 1
                     'man_code': mancode[0],
@@ -311,6 +377,8 @@ def add_col(cr, name, values,
 
 def write_hulls(ensemble, outfile, hullcpts, hullareas, outlines,
                 hull_store,
+                svdqafile=None,
+                centroidfile=None,
                 stacks=None,
                 compzero=0,
                 revision=1,
@@ -334,6 +402,19 @@ def write_hulls(ensemble, outfile, hullcpts, hullareas, outlines,
     hull_store : dict
         The keys are (stack, component) and the values are the
         stack-level data read from the mrgsrc3 file.
+    svdqafile : str or None, optional
+        If given then the name of the file containing the stack ids
+        that went to SVD QA. The first column of this file is used
+        as the stack id. The full path is written to the SVDQAFIL
+        header keyword (or the string NONE if not given). If there
+        is no such file then the STKSVDQA column is not written out.
+    centroidfile : str or None, optional
+        If given theh the name of the file containing the stack,cpt,
+        include_centroid information (a partial list). Used to set
+        up the INCLUDE_IN_CENTROID column. It is stored in the CENFILE header
+        keyword (or the string NONE if not given). Any stack-level
+        hull not in this file (or all if the file is not given) is
+        set to True.
     stacks : list of str or None, optional
         The stacks that form this ensemble (whether or not they
         have a stack-level convex hull). If given then the
@@ -353,9 +434,31 @@ def write_hulls(ensemble, outfile, hullcpts, hullareas, outlines,
     assert len(hullcpts) == len(outlines), \
         'len = {} vs {}'.format(len(hullcpts), len(outlines))
 
+    # Should probably read the SVD QA file before this, but assume
+    # it is okay.
+    #
+    if svdqafile is None:
+        svdqas = None
+        svdqafile = "NONE"
+    else:
+        svdqas = read_svdqafile(svdqafile)
+        svdqafile = os.path.abspath(svdqafile)
+
+    if centroidfile is None:
+        exclude_cens = set([])
+        centroidfile = "NONE"
+    else:
+        exclude_cens = read_centroidfile(centroidfile)
+        centroidfile = os.path.abspath(centroidfile)
+
     extra_hdr = [('ENSEMBLE', ensemble, 'The ensemble'),
                  ('COMPZERO', compzero,
-                  'The COMPONENT value for cpt=0')]
+                  'The COMPONENT value for cpt=0'),
+                 ('SVDQAFIL', svdqafile,
+                  'The stacks that went to SVD QA'),
+                 ('CENFILE', centroidfile,
+                  'centroid input')]
+
     if stacks is not None:
         stacks = sorted(list(stacks))
         for i, stack in enumerate(stacks):
@@ -382,7 +485,13 @@ def write_hulls(ensemble, outfile, hullcpts, hullareas, outlines,
     mtypes = []
     areas = []
     ebands = []
+    lhoods = []
     mancodes = []
+    revnums = []
+
+    incl_centroids = []
+    stksvdqas = []
+
     for i, hcpts in enumerate(hullcpts):
 
         m = i + 1
@@ -394,16 +503,27 @@ def write_hulls(ensemble, outfile, hullcpts, hullareas, outlines,
 
             stack, cpt = key
 
+            stored = hull_store[key]
+
             mid.append(m)
             nhulls.append(nh)
             stks.append(stack)
             cpts.append(cpt + compzero)
             mtypes.append('Unambiguous')
             areas.append(hullareas[key])
-            ebands.append(hull_store[key]['eband'])
+            ebands.append(stored['eband'])
+            lhoods.append(stored['likelihood'])
 
             # would like to keep as a bit array
-            mancodes.append(hull_store[key]['man_code'])
+            mancodes.append(stored['man_code'])
+
+            revnums.append(stored['mrgsrc3rev'])
+
+            incl_centroids.append(key not in exclude_cens)
+
+            if svdqas is not None:
+                # This is a case-sensitive check
+                stksvdqas.append(stack in svdqas)
 
     # NOTE: the NHULLS column might be better in the next block,
     #       but it can be useful to know how many stack-level
@@ -422,8 +542,18 @@ def write_hulls(ensemble, outfile, hullcpts, hullareas, outlines,
             desc='Area of hull excluding pixel-mask filter')
     add_col(cr, 'EBAND', ebands,
             desc='Energy band of hull')
+    add_col(cr, 'LIKELIHOOD', lhoods,
+            desc='Likelihood of hull')
     add_col(cr, 'MAN_CODE', mancodes,
             desc='Copied from MEXTSRC block (converted to int)')
+    add_col(cr, 'MRG3REV', revnums,
+            desc='Revision of mrgsrc3 file used')
+    add_col(cr, 'INCLUDE_IN_CENTROID', incl_centroids,
+            desc='Use hull in centroid calculation?')
+
+    if svdqas is not None:
+        add_col(cr, 'STKSVDQA', stksvdqas,
+                desc='Did this stack go to SVD QA?')
 
     ds.add_crate(cr)
 
@@ -708,13 +838,90 @@ def write_stack_hull_as_ds9(hull, outdir, revision, color='green'):
     with open(outfile, 'w') as ofh:
         ds9_header(ofh, color=color)
         ostr = ds9_shape(hull['eqpos'])
-        ostr += ' # text={{stack={} {}}}\n'.format(hull['stack'],
-                                                   hull['component'])
+        ostr += ' # text={{stack={} {} lhood={:.1f}}}\n'.format(hull['stack'],
+                                                                hull['component'],
+                                                                hull['likelihood'])
         ofh.write(ostr)
+
+
+def read_svdqafile(infile):
+    """Returns the set of stacks that went to SVD QA.
+
+    Parameters
+    ----------
+    infile : str
+        The name of the file. The first column is used, and it
+        is assumed to be case-sensitive.
+
+    Returns
+    -------
+    stackids : set of str
+        The stacks that have been to SVD QA.
+
+    """
+
+    cr = pycrates.read_file(infile)
+    if cr.get_nrows() < 1:
+        raise IOError("No data read from: {}".format(infile))
+
+    # Explicit conversion to a Python string
+    return set([str(v) for v in cr.get_column(0).values])
+
+
+def read_centroidfile(infile):
+    """The set of stack-level hulls to exclude from centroid calculation.
+
+    The file is assumed to have columns "stack", "cpt", and
+    "use_cen". Only those with "use_cen" set to False are returned
+    here.
+
+    Parameters
+    ----------
+    infile : str
+        The name of the file.
+
+    Returns
+    -------
+    hulls : set of (stackid, component)
+        The stack-level hulls to exclude from centroid calculation.
+
+    Notes
+    -----
+    Although technically there could be a case where no stack-level
+    hulls are to be excluded, we know this is not the case here,
+    so an error is raised if no such rows are found (as a sanity
+    check).
+
+    """
+
+    cr = pycrates.read_file(infile)
+    if cr.get_nrows() < 1:
+        raise IOError("No data read from: {}".format(infile))
+
+    # do filtering here rather than with a DM filter as not 100%
+    # convinced this works correctly in CIAO 4.9 (there have been
+    # problems with string filtering).
+    #
+    out = set([])
+    for stack, cpt, flag in zip(cr.stack.values,
+                                cr.cpt.values,
+                                cr.use_cen.values):
+        if flag != "False":
+            continue
+
+        key = stack, cpt
+        out.add(key)
+
+    if len(out) == 0:
+        raise IOError("No excluded data found in {}".format(infile))
+
+    return out
 
 
 def process_ensemble(ensemblefile, ensemble, outdir,
                      mrgsrc3dir,
+                     svdqafile=None,
+                     centroidfile=None,
                      compzero=0,
                      revision=1,
                      creator=None,
@@ -737,6 +944,16 @@ def process_ensemble(ensemblefile, ensemble, outdir,
         stacks. The names must match
         <stack>*mrgsrc3.fits* and there can only be one file per
         stack.
+    svdqafile : str or None, optional
+        If given then the name of the file containing the stack ids
+        that went to SVD QA. The first column of this file is used
+        as the stack id. The full path is written to the SVDQAFIL
+        header keyword (or the string NONE if not given). If there
+        is no such file then the STKSVDQA column is not written out.
+    centroidfile : str or None, optional
+        If given theh the name of the file containing the stack,cpt,
+        include_centroid information (a partial list). Used to set
+        up the INCLUDE_IN_CENTROID column.
     compzero : int, optional
         The value of the COMPONENT column in the HULLMATCH block
         for a stack-level hull which has a component value of 0
@@ -816,6 +1033,17 @@ def process_ensemble(ensemblefile, ensemble, outdir,
     overlap_gr, singles = identify.find_overlap_graph(hulls)
     overlaps = identify.get_nodes(overlap_gr)
 
+    # Order the overlaps so that
+    # a) longest first - that is the most (stack,cpt) pairs is first
+    # b) order by (stack,cpt) within an overlap
+    #
+    # This also changes the overlap from a set to a list.
+    #
+    # Using -len ensures that we go from longest to shortest.
+    #
+    overlaps = sorted([sorted(list(overlap)) for overlap in overlaps],
+                      key=lambda x: (-len(x), x))
+
     master_hulls = []
 
     # Overlap hulls
@@ -894,6 +1122,8 @@ def process_ensemble(ensemblefile, ensemble, outdir,
     write_hulls(ensemble, outfile, master_hulls, hull_areas,
                 outlines,
                 hull_store,
+                svdqafile=svdqafile,
+                centroidfile=centroidfile,
                 stacks=stacks,
                 compzero=compzero,
                 revision=revision,
@@ -908,6 +1138,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=help_str,
                                      prog=sys.argv[0])
 
+    parser.add_argument("svdqafile",
+                        help="The list of stacks that went to SVD QA")
+    parser.add_argument("centroidfile",
+                        help="stack,cpt,include_centroid information")
     parser.add_argument("ensemblefile",
                         help="The ensemble to stack mapping")
     parser.add_argument("ensemble", type=str,
@@ -925,6 +1159,8 @@ if __name__ == "__main__":
     args = parser.parse_args(sys.argv[1:])
 
     process_ensemble(args.ensemblefile, args.ensemble, args.outdir,
+                     svdqafile=args.svdqafile,
+                     centroidfile=args.centroidfile,
                      mrgsrc3dir=args.mrgsrc3dir,
                      compzero=args.compzero,
                      creator=sys.argv[0])

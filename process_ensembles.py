@@ -3,8 +3,10 @@
 """
 Usage:
 
-  ./process_ensembles.py ensemblestk stackmap outdir
+  ./process_ensembles.py
+      svdqafile centroidfile ensemblestk stackmap outdir
       --mrgsrc3dir <dirname>
+      --verbose
 
 Aim:
 
@@ -15,6 +17,15 @@ ensemble and stack ids (it has columns ensemble and stack),
 and outdir is the base directory for the output. The output
 directory will be created if need be.
 
+The svdqafile argument points to a file which lists all the stacks
+that went to SVD QA, one stack per line. The first column is used.
+This file is used to fill out the STKSVDQA column.
+
+The centroidfile is a list of stack,component,use_centroid lines
+which indicate which stack-level hulls to use in the centroid
+calculation. Any stack-level hull not in this file is assumed
+to be included.
+
 The outputs are
    <outdir>/<ensemble>
    <outdir>/log.<ensemble>
@@ -22,6 +33,8 @@ The outputs are
 If the output directory exists then the ensemble will be skipped.
 The log file will be over-written if it exists but the output
 directory does not.
+
+The --verbose flag just displays the command being run
 
 """
 
@@ -33,7 +46,8 @@ import stk
 
 
 def doit(ensemblestk, stackmapfile, outdir,
-         mrgsrc3dir=""):
+         svdqafile, centroidfile, mrgsrc3dir="",
+         verbose=False):
     """Process the ensembles to find master hulls.
 
     If the output directory for an ensemble exists it is skipped.
@@ -49,8 +63,19 @@ def doit(ensemblestk, stackmapfile, outdir,
     outdir : str
         The name of the output directory; it will be created
         if it does not exist.
+    svdqafile : str
+        The name of the file containing the stack ids
+        that went to SVD QA. The first column of this file is used
+        as the stack id. The full path is written to the SVDQAFIL
+        header keyword.
+    centroidfile : str or None, optional
+        If given theh the name of the file containing the stack,cpt,
+        include_centroid information (a partial list). Used to set
+        up the USE_CEN column.
     mrgsrc3dir : str, optional
         Passed through as the --mrgsrc3dir value if not empty.
+    verbose : bool, optional
+        If set then displays the command being run.
     """
 
     # Assume the directory name does not have leading or trailing
@@ -100,10 +125,14 @@ def doit(ensemblestk, stackmapfile, outdir,
         if os.path.exists(logfile):
             os.remove(logfile)
 
-        args = ['python', toolname, stackmapfile,
-                ensname, dirname]
+        args = ['python', toolname, svdqafile, centroidfile,
+                stackmapfile, ensname, dirname]
         if mrgsrc3dir != "":
             args.extend(["--mrgsrc3dir", mrgsrc3dir])
+
+        if verbose:
+            # assume no protection/quoting needed
+            print(">> {}".format(" ".join(args)))
 
         try:
             out = check_output(args, stderr=STDOUT)
@@ -147,6 +176,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=help_str,
                                      prog=sys.argv[0])
 
+    parser.add_argument("svdqafile",
+                        help="The list of stacks that went to SVD QA")
+    parser.add_argument("centroidfile",
+                        help="stack,cpt,include_centroid information")
     parser.add_argument("ensemblestk",
                         help="The ensembles to process, as a stack")
     parser.add_argument("stackmap", type=str,
@@ -158,7 +191,13 @@ if __name__ == "__main__":
                         default="",
                         help="The mrgsrc3 directory: default %(default)s")
 
+    parser.add_argument("--verbose", action="store_true",
+                        help="Displays the command being run")
+
     args = parser.parse_args(sys.argv[1:])
 
     doit(args.ensemblestk, args.stackmap, args.outdir,
-         mrgsrc3dir=args.mrgsrc3dir)
+         svdqafile=args.svdqafile,
+         centroidfile=args.centroidfile,
+         mrgsrc3dir=args.mrgsrc3dir,
+         verbose=args.verbose)
