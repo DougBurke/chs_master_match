@@ -268,6 +268,12 @@ def read_hulls(stack, mrgsrc3dir):
         reg = region.regParse(regstr)
         area_pixels = region.regArea(reg)
 
+        # There have been cases where the EBAND is upper case,
+        # so enforce lower case here.
+        #
+        eband = eband.lower()
+        assert eband in "busmhw", eband
+
         out.append({'stack': stack,
                     'component': cpt,
                     'infile': infile,
