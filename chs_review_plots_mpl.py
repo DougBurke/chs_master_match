@@ -151,14 +151,14 @@ def read_xmdat3(xmdat3dir, stack):
     infile = os.path.join(xmdat3dir, stack,
                           '{}N000_xmdat3.fits'.format(stack))
     if not os.path.isfile(infile):
-        print("LOG: no xmdat3 file {}".format(infile))
+        utils.logmsg("no xmdat3 file {}".format(infile))
         return None
 
     try:
         cr = pycrates.read_file(infile +
                                 "[cols ra,dec,psf_r0,psf_r1,psf_ang]")
     except IOError:
-        print("LOG: unable to read XMDAT3 file {}".format(infile))
+        utils.logmsg("unable to read XMDAT3 file {}".format(infile))
         raise
 
     out = []
@@ -359,6 +359,7 @@ def find_hull_limits(stackhulls, hulldata, axscale=0.5):
 
 def label_plot(stack, cpt, bname, axes,
                hullmap, ensemblemap,
+               max_lhood=500,
                lblcol='orange',
                lblsize=12):
     """Add labels to a plot of the stack.
@@ -379,6 +380,9 @@ def label_plot(stack, cpt, bname, axes,
     ensemblemap : dict
         The keys are stack ids, and the values are the STKIDxxx
         value (i.e. the integer value of xxx).
+    max_lhood : number, optional
+        Likelihoods greater than this are displayed as "L>max_lhood"
+        rather than "L=lhood"
 
     """
 
@@ -386,18 +390,32 @@ def label_plot(stack, cpt, bname, axes,
     # the component number.
     #
     stacklbl = "{:03d}.{:02d}".format(ensemblemap[stack], cpt)
+    # bandlbl = "band={}".format(bname)
+    bandlbl = bname
 
-    plt.text(0.05, 0.9, "band={}".format(bname),
+    xl = 0.05
+    xr = 0.95
+    yb = 0.05
+    yt = 0.9
+
+    plt.text(xl, yt, bandlbl,
              color=lblcol, fontsize=lblsize,
              transform=axes.transAxes)
 
-    plt.text(0.95, 0.05, stacklbl, horizontalalignment='right',
+    plt.text(xr, yb, stacklbl, horizontalalignment='right',
              color=lblcol, fontsize=lblsize,
              transform=axes.transAxes)
 
-    # Label if the stack-level hull was manually-modified.
+    # What was the likelihood?
+    # Label if the stack-level hull was manually-modified;
+    # ideally this would use the knowledge of whether the stack
+    # went to SVDQA but for now do not pass that in (would either
+    # need to be done separately or to read the mhull and not
+    # mrgsrc3 file).
     #
+    lhood = None
     manadj = None
+    stksvdqa = None
     for hull in hullmap[stack]:
         if hull['component'] != cpt:
             continue
@@ -405,11 +423,41 @@ def label_plot(stack, cpt, bname, axes,
         assert manadj is None
         manadj = hull['mancode'] != 0
 
-        # should probably break here
+        assert lhood is None
+        lhood = hull['likelihood']
+
+        assert stksvdqa is None
+        stksvdqa = hull['stksvdqa']
+
+        # should probably break here but leave in as a sanity
+        # check (that hullmap doesn't have duplicate entries)
 
     assert manadj is not None
+    assert lhood is not None
+    assert stksvdqa is not None
+
+    if lhood > max_lhood:
+        # lbl = r"$\mathcal{{L}}>{}$".format(max_lhood)
+        lbl = ">{}".format(max_lhood)
+    else:
+        # lbl = r"$\mathcal{{L}}={:.1f}$".format(lhood)
+        lbl = "{:.1f}".format(lhood)
+    plt.text(xl, yb, lbl,
+             color=lblcol, fontsize=lblsize,
+             transform=axes.transAxes)
+
+    lbl = None
     if manadj:
-        plt.text(0.95, 0.9, "ManAdj", horizontalalignment='right',
+        # if manually adjusted then we don't care if it went to
+        # SVD QA or not.
+        # lbl = "ManAdj"
+        lbl = "Man"
+    elif stksvdqa:
+        # lbl = "STK SVD QA"
+        lbl = "SVDQA"
+
+    if lbl is not None:
+        plt.text(xr, yt, lbl, horizontalalignment='right',
                  color=lblcol, fontsize=lblsize,
                  transform=axes.transAxes)
 
@@ -772,7 +820,7 @@ def draw_hulls_and_images(master_hull,
 
         # What band to use?
         #
-        bname = hulldata[key]['band']
+        bname = hulldata[key]['eband']
 
         if bname == 'w':
             bspec = '[bin sky=::32]'
@@ -822,7 +870,7 @@ def draw_hulls_and_images(master_hull,
 
         # What band to use?
         #
-        bname = hulldata[key]['band']
+        bname = hulldata[key]['eband']
 
         # Read in the date or grab it from the cache
         #

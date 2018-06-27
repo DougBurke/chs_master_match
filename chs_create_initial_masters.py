@@ -137,52 +137,6 @@ def find_ensemble_stacks(ensemblefile, ensemble):
     return out
 
 
-def get_revision(crate):
-    """Return the REVISION of this file.
-
-    Parameters
-    ----------
-    crate : a pycrates crate
-        The block to use.
-
-    Returns
-    -------
-    revision : int
-        The revision number.
-
-    Notes
-    -----
-    At the moment the revision number is extracted from the file
-    name (the Nxxx part) rather than using the REVISION keyword as
-    it is not clear to me the latter has much discriminatory power.
-    The file name (not including path) must begin with the STACK_ID
-    value and then followed with "N\d\d\d_". At the time of writing
-    (2018-06-19) Joe has confirmed that mrgsrc3 files are not
-    guaranteed to have the correct REVISION value, although this
-    should be fixed once the stack has passed through the source
-    properties pipeline.
-    """
-
-    infile = crate.get_filename()
-    basename = os.path.basename(infile)
-
-    stackname = crate.get_key_value('STACK_ID')
-    assert stackname is not None, infile
-    assert basename.startswith(stackname + 'N'), \
-        'infile={} stackname={}'.format(infile, stackname)
-
-    s = len(stackname) + 1
-    assert basename[s + 3] == '_', \
-        'infile={}  char={}'.format(infile, basename[s + 3])
-
-    vstr = basename[s : s + 3]
-    try:
-        return int(vstr)
-    except ValueError:
-        raise ValueError("Unexpected version number " +
-                         "{} in {}".format(vstr, infile))
-
-
 def read_hulls(stack, mrgsrc3dir):
     """Read in the hulls for the stack.
 
@@ -240,7 +194,7 @@ def read_hulls(stack, mrgsrc3dir):
 
     # What revision of the mrgsrc3 file is this?
     #
-    revnum = get_revision(cr)
+    revnum = utils.get_revision(cr)
 
     # For now it is easier to deal with the MAN_CODE as a byte
     # rather than a bit array, so switch.

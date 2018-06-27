@@ -12,13 +12,12 @@ master-hull data (the location of the ens<> directories).
 The webserver assets are found relative to the location of the
 script.
 
-Data will be written to the working directory (or it will eventually
-do so).
+Data will be written to the working directory.
 
 Things to do
 
- - hull review page: regions could be added to JS when the page is created, which would
-   avoid some of the callbacks needed
+ - hull review page: regions could be added to JS when the page is
+   created, which would avoid some of the callbacks needed
  - should draw all stack hulls in JS9 window
 
   These two are almost done; need to remove or change the behavior of the
@@ -32,8 +31,8 @@ Things to do
   ambiently, but wait for the user to save the hull, in which case the
   display can be updated at that time (or perform some other action).
 
- - when the master hull is changed, should change the JS data representation and then use
-   that to update other JS9 displays.
+ - when the master hull is changed, should change the JS data
+   representation and then use that to update other JS9 displays.
 
  - why is ens0008300_001.013 pre-labelled as manual QA?
    (may only appear on re-loads on firefox?)
@@ -203,6 +202,7 @@ def valid_ensemble(datadir, ensemble):
             ensemble[-4] != '_':
         return False
 
+    # Ensure that in ensXXXXXXX_YYY parts, XXX and YYY are integers
     try:
         int(ensemble[3:-4])
         int(ensemble[-3:])
@@ -584,9 +584,9 @@ def parse_datadir(datadir, userdir):
         errlog("no ensemble dirs found in {}".format(datadir))
         return None
 
+    """
     # HACK: use a subset of ensembles to save time
     #
-    """
     nmax = 60
     dbg("restricting to first {} ensembles".format(nmax))
     ensembledirs = ensembledirs[:nmax]
@@ -795,9 +795,7 @@ def find_master_center(infile, masterid):
 
     """
 
-    """ Would like to do the following but need to allow for
-        HULLLIST or SRCLIST block names
-    fname = "{}[SRCLIST][Master_Id={}]".format(infile, masterid)
+    fname = "{}[HULLLIST][Master_Id={}]".format(infile, masterid)
     cr = pycrates.read_file(fname)
     nrows = cr.get_nrows()
     if nrows == 0:
@@ -807,52 +805,23 @@ def find_master_center(infile, masterid):
     elif nrows > 1:
         errlog("multiple rows matching {}".format(fname))
         return None
-    """
-
-    ds = pycrates.CrateDataset(infile, mode='r')
-    cr = None
-    for blname in ['HULL', 'SRC']:
-        try:
-            cr = ds.get_crate(blname + 'LIST')
-        except IndexError:
-            pass
-
-    if cr is None:
-        errlog("Unable to find HULL/SRCLIST in {}".format(infile))
-        return None
-
-    try:
-        col = cr.get_column('Master_id')
-    except ValueError:
-        errlog("No Master_Id column in " +
-               "{}[{}]".format(infile, cr.name))
-        return None
-
-    idx, = np.where(col.values == masterid)
-    nrows = len(idx)
-    if nrows == 0:
-        errlog("no master_id={} in {}".format(masterid,
-                                              infile))
-        return None
-
-    elif nrows > 1:
-        errlog("multiple rows matching master_id=" +
-               "{} in {}".format(masterid, infile))
-        return None
-
-    pos = idx[0]
 
     # NOTE: QA cases have NVERTEX=0
-    nv = cr.NVERTEX.values[pos]
-    if nv < 3:
-        errlog("nvertex={} for master_id={} {}".format(nv, masterid,
+    nvertex = cr.NVERTEX.values[0]
+    if nvertex < 3:
+        errlog("nvertex={} for master_id={} {}".format(nvertex,
+                                                       masterid,
                                                        infile))
         return None
 
-    eqpos = cr.EQPOS.values[pos, :, :nv]
+    eqpos = cr.EQPOS.values[0, :, :nvertex]
     ra_mid = (eqpos[0].min() + eqpos[0].max()) / 2.0
     dec_mid = (eqpos[1].min() + eqpos[1].max()) / 2.0
     return ra_mid, dec_mid
+
+
+# Internal check to note how many times get_data_master is called
+_get_data_master = 0
 
 
 def get_data_master(datadir, userdir, rawdir, ensemble, masterid):
@@ -874,7 +843,21 @@ def get_data_master(datadir, userdir, rawdir, ensemble, masterid):
     Returns
     -------
     summary : dict or None
+
+    Notes
+    -----
+    This could be simplified (partly) by using chs_utils.read_master_hulls,
+    but it's not 100% clear whether this is going to be sufficient once
+    multiple revisions are present. I was concerned about possible
+    changes to the stack-level hulls, but actually this shouldn't happen;
+    it's only the proposed master hulls that would get edited.
+
     """
+
+    # TODO: Is this routine ever called?
+    global _get_data_master
+    _get_data_master += 1
+    dbg("In get_data_master - call# {}".format(_get_data_master))
 
     # Need the latest version of the master hull. Now
     # read_ensemble_json does too much, but let's not worry about
@@ -920,8 +903,8 @@ def get_data_master(datadir, userdir, rawdir, ensemble, masterid):
         errlog("missing hullfile {}".format(hullfile))
         return None
 
-    infile = "{}[master_id={}][cols stackid, component]".format(hullfile,
-                                                                masterid)
+    infile = "{}[HULLMATCH][master_id={}]".format(hullfile, masterid) + \
+             "[cols stackid,component,likelihood,stksvdqa,include_in_centroid]"
     cr = pycrates.read_file(infile)
     nrows = cr.get_nrows()
     if nrows == 0:
@@ -949,6 +932,9 @@ def get_data_master(datadir, userdir, rawdir, ensemble, masterid):
 
     stacks = cr.STACKID.values.copy()
     components = cr.COMPONENT.values.copy() - cpt0
+    likelihoods = cr.LIKELIHOOD.values.copy()
+    svdqas = cr.STKSVDQA.values.copy()
+    incl_centroids = cr.INCLUDE_IN_CENTROID.values.copy()
     cr = None
 
     infile = os.path.join(dname,
@@ -979,15 +965,16 @@ def get_data_master(datadir, userdir, rawdir, ensemble, masterid):
     # region, even though we should have both or neither, not
     # either.
     #
-    infile = os.path.join(dname,
-                          'master_hulls.{}.v{}.fits'.format(ensemble,
-                                                            version))
-    hull_cen = find_master_center(infile, int(masterid))
+    hull_cen = find_master_center(hullfile, int(masterid))
     if hull_cen is not None:
         out['center'] = {'ra': hull_cen[0], 'dec': hull_cen[1]}
 
     out['stacks'] = []
-    for stk, cpt in zip(stacks, components):
+    for stk, cpt, lkhood, svdqa, incl_centroid in zip(stacks,
+                                                      components,
+                                                      likelihoods,
+                                                      svdqas,
+                                                      incl_centroids):
         infile = os.path.join(dname,
                               'stack.{}.{}.v{}.reg'.format(stk,
                                                            cpt,
@@ -1009,6 +996,9 @@ def get_data_master(datadir, userdir, rawdir, ensemble, masterid):
             slabel = '{}.{}'.format(stklbl, cpt)
 
         out['stacks'].append({'stack': stk, 'component': cpt,
+                              'likelihood': lkhood,
+                              'svdqa_flag': svdqa,
+                              'include_in_centroid_flag': incl_centroid,
                               'cpt0': cpt0,
                               'label': slabel,
                               'ra': sra,
@@ -1321,6 +1311,8 @@ def create_master_hull_page(env,
     the HTML in Python and in Javascript.
     """
 
+    # TODO: use chs_utils.read_master_hulls and convert this code
+
     mid = "{:03d}".format(masterid)
     revstr = "{:03d}".format(revision)
 
@@ -1382,22 +1374,21 @@ def create_master_hull_page(env,
 
     # From the hull file,
     #
-    # *) HULLMATCH block or SRCMATCH block
+    # *) HULLMATCH block
     #
     # find those stacks associated with a master source, and the
     # energy band.
     #
-    # *) HULLLIST block or SRCLIST block
+    # *) HULLLIST block
     #
     # find the state of each master hull and, where possible,
     # read in the vertices.
     #
-    # The HULLxxx variants are tried first, and then fall back to the
-    # SRCxxx versions if they are not found (they should be HULLxxx
-    # but to support testing want to allow SRCxxx versions).
-    #
     # The component values are corrected for the COMPZERO keyword
     # (if set).
+    #
+    # NOTE: there is code that does something similar to this
+    #       above
     #
     try:
         ds = pycrates.CrateDataset(hullfile, mode='r')
@@ -1411,17 +1402,14 @@ def create_master_hull_page(env,
 
     try:
         cr = ds.get_crate('HULLMATCH')
-    except IndexError:
-        try:
-            cr = ds.get_crate('SRCMATCH')
-        except IndexError as exc:
-            errlog("unable to read HULL/SRCMATCH from " +
-                   "hullfile {} - {}".format(hullfile, exc))
-            out = "<!DOCTYPE html><html><head><title>INTERNAL ERROR</title>"
-            out += "</head><body><p>Error reading HULL/SRCMATCH block of "
-            out += "hullfile={}\nreason=\n{}".format(hullfile, exc)
-            out += "- see Doug!</p></body></html>"
-            return 404, out
+    except IndexError as exc:
+        errlog("unable to read HULLMATCH from " +
+               "hullfile {} - {}".format(hullfile, exc))
+        out = "<!DOCTYPE html><html><head><title>INTERNAL ERROR</title>"
+        out += "</head><body><p>Error reading HULLMATCH block of "
+        out += "hullfile={}\nreason=\n{}".format(hullfile, exc)
+        out += "- see Doug!</p></body></html>"
+        return 404, out
 
     # We have aleady got this information, but recreate it
     #
@@ -1453,17 +1441,41 @@ def create_master_hull_page(env,
         cpt0 = 0
 
     # Do not need the eband info to be indexed by master id
+    #
+    detectors = set([])
     hull_store = {}
+    mid_by_component = {}
     ebands_by_component = {}
     mancode_by_component = {}
+    likelihood_by_component = {}
+    svdqa_by_component = {}
+    centroid_by_component = {}
+    mrgrev_by_component = {}
     for vals in zip(cr.Master_Id.values,
                     cr.STACKID.values,
                     cr.COMPONENT.values,
+                    cr.LIKELIHOOD.values,
+                    cr.STKSVDQA.values,
                     cr.EBAND.values,
+                    cr.INCLUDE_IN_CENTROID.values,
+                    cr.MRG3REV.values,
                     cr.MAN_CODE.values):
 
-        midval, stackid, cpt, eband, mancode = vals
+        midval, stackid, cpt, lkhood, svdqa, eband, \
+            centroid, mrgrev, mancode = vals
         cpt -= cpt0
+
+        if stackid.startswith('acisf'):
+            detectors.add('acis')
+        elif stackid.startswith('hrcf'):
+            detectors.add('hrc')
+        else:
+            errlog("unexpected stackid={}".format(stackid))
+            out = "<!DOCTYPE html><html><head><title>INTERNAL ERROR</title>"
+            out += "</head><body><p>Unsupported stackid="
+            out += "{}\n".format(stackid)
+            out += "- see Doug!</p></body></html>"
+            return 404, out
 
         # NOTE: mancode is encoded "strangely", so remove the
         #       extra dimension
@@ -1488,26 +1500,32 @@ def create_master_hull_page(env,
             store['components'][stackid] = [cpt]
 
         key = (stackid, cpt)
-        assert key not in ebands_by_component, "key={}".format(key)
-        assert key not in mancode_by_component, "key={}".format(key)
+        for check in [mid_by_component, ebands_by_component,
+                      mancode_by_component,
+                      likelihood_by_component, svdqa_by_component,
+                      centroid_by_component, mrgrev_by_component]:
+            assert key not in check, "key={}".format(key)
+
+        mid_by_component[key] = midval
         ebands_by_component[key] = eband
         mancode_by_component[key] = mancode
+        likelihood_by_component[key] = lkhood
+        svdqa_by_component[key] = svdqa
+        centroid_by_component[key] = centroid
+        mrgrev_by_component[key] = mrgrev
 
     cr = None
 
     try:
         cr = ds.get_crate('HULLLIST')
-    except IndexError:
-        try:
-            cr = ds.get_crate('SRCLIST')
-        except IndexError as exc:
-            errlog("unable to read HULL/SRCLIST from " +
-                   "hullfile {} - {}".format(hullfile, exc))
-            out = "<!DOCTYPE html><html><head><title>INTERNAL ERROR</title>"
-            out += "</head><body><p>Error reading SRCLIST block of "
-            out += "hullfile={}\nreason=\n{}".format(hullfile, exc)
-            out += "- see Doug!</p></body></html>"
-            return 404, out
+    except IndexError as exc:
+        errlog("unable to read HULLLIST from " +
+               "hullfile {} - {}".format(hullfile, exc))
+        out = "<!DOCTYPE html><html><head><title>INTERNAL ERROR</title>"
+        out += "</head><body><p>Error reading HULLLIST block of "
+        out += "hullfile={}\nreason=\n{}".format(hullfile, exc)
+        out += "- see Doug!</p></body></html>"
+        return 404, out
 
     for itervals in zip(cr.Master_Id.values,
                         cr.STATUS.values,
@@ -1713,9 +1731,41 @@ def create_master_hull_page(env,
     for h in info['masters']:
         h['masterid_int'] = int(h['masterid'])
 
+    detectors = ",".join(list(detectors))
+
+    # We probably have this information, but convert it into a
+    # form easily usable by the template.
+    #
+    # TODO: change ordering
+    # TODO: change name
+    # TODO: this should not be needed (e.g. filtering by masterid)
+    #
+    components = []
+    for key in ebands_by_component.keys():
+        if mid_by_component[key] != masterid:
+            continue
+
+        components.append({'name': key,
+                           'eband': ebands_by_component[key],
+                           'likelihood': likelihood_by_component[key],
+                           'adjusted': mancode_by_component[key] > 0,
+                           'svdqa': svdqa_by_component[key],
+                           'include_in_centroid': centroid_by_component[key],
+                           'mrg3rev': mrgrev_by_component[key]})
+
+    # Do we know the actual size here?
+    #
+    if len(components) == 0:
+        log("filtered out all components!")
+        out = "<!DOCTYPE html><html><head><title>INTERNAL ERROR</title>"
+        out += "</head><body><p>Filtered out all components "
+        out += "- see Doug!</p></body></html>"
+        return 404, out
+
     # A lot of this data could be accessed via AJAX from the page
     # setup code, but leave as is for now.
     #
+    # TODO: send in the "new" data
     return apply_template(env, 'masterhull.html',
                           {'ensemble': ensemble,
                            'revstr': revstr,
@@ -1723,6 +1773,8 @@ def create_master_hull_page(env,
                            'masterid': masterid,
                            'npages': hull['npages'],
                            'ncpts': hull['ncpts'],
+                           'detectors': detectors,
+                           'components': components,
                            'info': info,
                            'hull': hull,
                            'is_latest': is_latest,
@@ -1852,6 +1904,7 @@ class CHSHandler(BaseHTTPRequestHandler):
             self.get_image(path[4:])
             return
 
+        # IS THIS ENDPOINT ACTUALLY USED?
         if path.startswith('regions/'):
             self.get_regions(path[8:])
             return
@@ -2040,6 +2093,9 @@ class CHSHandler(BaseHTTPRequestHandler):
 
         where master_hull_id may be 001 or 1
 
+        Notes
+        -----
+        Is this endpoint actually used?
         """
 
         toks = path.split('/')
@@ -2205,6 +2261,7 @@ def serve(userdir, webdir, datadir, templatedir,
 
     server_address = ('', port)
     httpd = CHSServer(store, server_address, CHSHandler)
+    log("Web assets: {}".format(webdir))
     log("Starting server on http://localhost:{}/".format(port))
     httpd.serve_forever()
 
@@ -2214,6 +2271,7 @@ def usage(progName):
     sys.stderr.write("\nport should be an integer and defaults to ")
     sys.stderr.write("8070 if not given.\n")
     sys.exit(1)
+
 
 if __name__ == "__main__":
 

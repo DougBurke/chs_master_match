@@ -1,6 +1,7 @@
 #infobar {
   float: left;
   width: 20em;
+  /* width: 30em;   try larger width for component list */
 }
 
 #infobar div {
@@ -51,6 +52,11 @@ td.undecided {
 
 #action {
   text-align: center;
+}
+
+div#infobar div#action {
+  border-width: 3px;
+  padding: 0.5em 0;
 }
 
 #summary {

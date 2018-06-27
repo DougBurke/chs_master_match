@@ -94,7 +94,8 @@ function goToRaDec(wcs, opts, debug=true) {
 }
 
 // This is a wrapper around JS9.DisplaySection which restores the
-// current pan position after a change.
+// current pan position after a change. Hopefully (as of JS9 v2.1)
+// this should not be needed, but I have not validated this assertion.
 //
 function changeJS9Display(stack, cpt, section, opts) {
 

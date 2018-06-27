@@ -53,6 +53,72 @@
 	
       </div>
       
+      <div id='action'>
+
+	User action:
+
+{# Filled in by JS on page load #}
+{% if is_latest %}
+        <select required='true' id='choice' class='button'>
+          <option value=''></option>
+	  <option value='accept'>Accept</value>
+	  <option value='delete'>Delete Master</value>
+	  <option value='manual'>Manual</value>
+        </select>
+{% else %}
+        <p id='chosen'></p>
+{% endif %}
+      </div>
+
+<!-- HACK -->
+<!--
+      <div id='components1'>
+	<table id='componenttable1'>
+	  <thead>
+	    <tr>
+	      <th>Stack.cpt</th>
+	      <th>mrg3 rev</th>
+	      <th>band</th>
+	      <th>likelihood</th>
+	      <th>adjusted?</th>
+	      <th>STK SVD QA</th>
+	      <th>Centroid?</th>
+	      <th>Change master</th>
+	      <th>Delete</th>
+	    </tr>
+	  </thead>
+
+	  <tbody>
+
+{% for h in components %}
+
+            <tr>
+	      <td>{{ h['name'] }}</td>
+	      <td>{{ h['mrg3rev'] }}</td>
+	      <td>{{ h['eband'] }}</td>
+	      <td>{{ h['likelihood'] }}</td>
+	      <td><input type='checkbox' readonly
+			 {% if h['adjusted'] %} checked {% endif %}
+	           ></td>
+	      <td><input type='checkbox' readonly
+			 {% if h['svdqa'] %} checked {% endif %}
+	           ></td>
+	      <td><input type='checkbox'
+			 name='include_in_centroid'
+			 id='include_in_centroid_{{ h['name']  }}'
+			 {% if h['include_in_centroid'] %} checked {% endif %}
+	           ></td>
+	      <td><button type='button'>change master</button></td>
+	      <td><button type='button'>delete cpt</button></td>
+	    </tr>
+
+{% endfor %}
+
+	  </tbody>
+	</table>
+      </div>
+-->
+
       <div class='info'>
 	<span class='label'>{{ ensemble }}</span>
 
@@ -61,6 +127,9 @@
 
 	<span>Number components:</span>
 	<span id='ncomponents'>{{ ncpts }}</span>
+
+	<span>Detectors:</span>
+	<span id='detectors'>{{ detectors }}</span>
 
 	<span>Version:</span>
 	<span>{{ revstr }}</span>
@@ -175,29 +244,64 @@
 	<br><button id='saveusercontent' class='button'>
 	  Save notes</button></div>
 
-      <div id='action'>
-
-	<p>User action:</p>
-
-{# Filled in by JS on page load #}
-{% if is_latest %}
-        <select required='true' id='choice' class='button'>
-          <option value=''></option>
-	  <option value='accept'>Accept</value>
-	  <option value='delete'>Delete Master</value>
-	  <option value='manual'>Manual</value>
-        </select>
-{% else %}
-        <p id='chosen'></p>
-{% endif %}
-      </div>
-
     </div>
 
     <div id='overviewbar'>
-      <div id='username'>{{ username }}</div>
+      <!--
+	  <div id='username'>{{ username }}</div>
+      -->
+
+      <!-- TODO: where should this go? -->
+      <!--
+      <div id='components'>
+	<table id='componenttable'>
+	  <thead>
+	    <tr>
+	      <th>Stack.cpt</th>
+	      <th>mrg3 rev</th>
+	      <th>band</th>
+	      <th>likelihood</th>
+	      <th>adjusted?</th>
+	      <th>STK SVD QA</th>
+	      <th>Centroid?</th>
+	      <th>Change master</th>
+	      <th>Delete</th>
+	    </tr>
+	  </thead>
+
+	  <tbody>
+
+{% for h in components %}
+
+            <tr>
+	      <td>{{ h['name'] }}</td>
+	      <td>{{ h['mrg3rev'] }}</td>
+	      <td>{{ h['eband'] }}</td>
+	      <td>{{ h['likelihood'] }}</td>
+	      <td><input type='checkbox' readonly
+			 {% if h['adjusted'] %} checked {% endif %}
+	           ></td>
+	      <td><input type='checkbox' readonly
+			 {% if h['svdqa'] %} checked {% endif %}
+	           ></td>
+	      <td><input type='checkbox'
+			 name='include_in_centroid'
+			 id='include_in_centroid_{{ h['name']  }}'
+			 {% if h['include_in_centroid'] %} checked {% endif %}
+	           ></td>
+	      <td><button type='button'>change master</button></td>
+	      <td><button type='button'>delete cpt</button></td>
+	    </tr>
+
+{% endfor %}
+
+	  </tbody>
+	</table>
+      </div>
+-->
 
       <img id='pageview'>
+
     </div>
 
   </body>

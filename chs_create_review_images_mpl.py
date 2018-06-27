@@ -35,6 +35,8 @@ and can be one of log10, sqrt, none.
 import json
 import os
 
+from collections import defaultdict
+
 import pycrates
 
 import chs_utils as utils
@@ -115,7 +117,8 @@ def create_review_products(chsfile, outdir,
 
     chsdir = os.path.dirname(chsfile)
 
-    hullmatch, hulllist, metadata = utils.read_master_hulls(chsfile)
+    hullmatch, hulllist, metadata = utils.read_master_hulls(chsfile,
+                                                            mrgsrc3dir)
 
     ensemble = metadata['ensemble']
     ensemblemap = metadata['ensemblemap']
@@ -142,13 +145,10 @@ def create_review_products(chsfile, outdir,
     #
     stacks = sorted(stacks)
 
-    mrgsrc3files = [utils.find_mrgsrc3(s, mrgsrc3dir)
-                    for s in stacks]
-    fov3files = [utils.find_stkfov3(s, stkfov3dir)
-                 for s in stacks]
-
-    if not os.path.isdir(outdir):
-        os.mkdir(outdir)
+    # Force a check that we can find these files before any
+    # processing.
+    #
+    fov3files = [utils.find_stkfov3(s, stkfov3dir) for s in stacks]
 
     # Read in all the QAs, labelled by mid.
     #
@@ -159,11 +159,22 @@ def create_review_products(chsfile, outdir,
             qas[mid] = read_qa_hulls(chsdir, revision,
                                      src['master_id'])
 
+    # Ideally I would remove hullmap, and use hullmatch directly,
+    # but the format is slightly different, so recreate hullmap
+    # (it used to be formed by calling read_hulls_from_mrgsrc3
+    # but this is now part of read_master_hulls).
+    #
+    hullmap = defaultdict(list)
+    for masterhull in hullmatch.values():
+        for hull in masterhull:
+            stack = hull['stack']
+            hullmap[stack].append(hull)
+
+    if not os.path.isdir(outdir):
+        os.mkdir(outdir)
+
     # Context image: FOV + all the hulls
     #
-    hullmap = {s: utils.read_hulls_from_mrgsrc3(m)
-               for s, m in zip(stacks, mrgsrc3files)}
-
     hulls = [hullmap[s] for s in stacks]
     plots.draw_ensemble_outline(ensemble, hulllist, hulls, qas,
                                 fov3files)

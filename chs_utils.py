@@ -4,6 +4,7 @@ Utility routines.
 
 import glob
 import os
+import sys
 
 import numpy as np
 
@@ -11,6 +12,29 @@ import pycrates
 import region
 
 from coords.format import deg2ra, deg2dec
+
+
+_logmsg = set([])
+
+
+def logmsg(msg):
+    """Display the message to STDOUT if it hasnt' already been reported.
+
+    The message is preceeded by 'LOG: '.
+
+    Parameters
+    ----------
+    msg : str
+        The message to display (actually can be anything that can
+        be converted to a string and has an equality test).
+
+    """
+
+    if msg in _logmsg:
+        return
+
+    print("LOG: {}".format(msg))
+    _logmsg.add(msg)
 
 
 def find_single_match(pat):
@@ -298,7 +322,82 @@ def make_spatial_filter_range(rmin, rmax, dmin, dmax):
                                             rmax_s, dmax_s)
 
 
-def read_hulls_from_mrgsrc3(mrgsrc3):
+def get_revision(crate):
+    """Return the REVISION of this file.
+
+    Parameters
+    ----------
+    crate : a pycrates crate
+        The block to use.
+
+    Returns
+    -------
+    revision : int
+        The revision number.
+
+    Notes
+    -----
+    At the moment the revision number is extracted from the file
+    name (the Nxxx part) rather than using the REVISION keyword as
+    it is not clear to me the latter has much discriminatory power.
+    The file name (not including path) must begin with the STACK_ID
+    value and then followed with "Nddd_" (where d represents '0'
+    to '9').
+
+    At the time of writing 2018-06-19) Joe has confirmed that mrgsrc3
+    files are not guaranteed to have the correct REVISION value,
+    although this should be fixed once the stack has passed through
+    the source properties pipeline.
+    """
+
+    infile = crate.get_filename()
+    basename = os.path.basename(infile)
+
+    stackname = crate.get_key_value('STACK_ID')
+    assert stackname is not None, infile
+    assert basename.startswith(stackname + 'N'), \
+        'infile={} stackname={}'.format(infile, stackname)
+
+    s = len(stackname) + 1
+    assert basename[s + 3] == '_', \
+        'infile={}  char={}'.format(infile, basename[s + 3])
+
+    vstr = basename[s: s + 3]
+    try:
+        return int(vstr)
+    except ValueError:
+        raise ValueError("Unexpected version number " +
+                         "{} in {}".format(vstr, infile))
+
+
+def report_revision_difference(infile, revnum):
+    """Provide a warning if infile does not match the expected revision.
+
+    The warning is to stderr.
+
+    Parameters
+    ----------
+    infile : str
+        The file name to check. It must have a STACK_ID in its
+        most-interesting block that matches the start of its name.
+    revnum : int
+        The revision number.
+
+    """
+
+    cr = pycrates.read_file(infile)
+    foundrev = get_revision(cr)
+    if foundrev == revnum:
+        return
+    elif foundrev > revnum:
+        sys.stderr.write("WARNING: expected revision " +
+                         "{} but found newer {}".format(revnum, foundrev))
+    else:
+        sys.stderr.write("WARNING: using an *older* " +
+                         "revision {} than expected {}".format(foundrev, revnum))
+
+
+def _read_hulls_from_mrgsrc3(mrgsrc3):
     """Return the HULL info.
 
     Parameters
@@ -315,6 +414,10 @@ def read_hulls_from_mrgsrc3(mrgsrc3):
         (which contains the WCS). The polygons are closed and only
         contain finite values.
 
+    Notes
+    -----
+    This used to be for external code, but has since been moved into
+    read_master_hulls.
     """
 
     infile = "{}[MEXTSRC][status=0]".format(mrgsrc3)
@@ -334,13 +437,14 @@ def read_hulls_from_mrgsrc3(mrgsrc3):
     #
     zs = zip(cr.COMPONENT.values,
              cr.EBAND.values,
+             cr.LIKELIHOOD.values,
              cr.POS.values,
              cr.get_column('EQSRC').values,
              cr.MAN_CODE.values.sum(axis=1)
              )
 
     out = []
-    for cpt, eband, pos, eqsrc, mancode in zs:
+    for cpt, eband, lhood, pos, eqsrc, mancode in zs:
 
         pos = validate_polygon(pos, report=False)
         eqsrc = validate_polygon(eqsrc, report=False)
@@ -350,6 +454,7 @@ def read_hulls_from_mrgsrc3(mrgsrc3):
                     'component': cpt,
                     # I think there may still be some upper case band values
                     'band': eband.lower(),
+                    'likelihood': lhood,
                     'mancode': mancode > 0,
                     'pos': pos.copy(),
                     'eqpos': eqsrc.copy(),
@@ -359,13 +464,18 @@ def read_hulls_from_mrgsrc3(mrgsrc3):
     return out
 
 
-def read_master_hulls(chsfile):
+def read_master_hulls(chsfile, mrgsrc3dir):
     """Read in hull information.
 
     Parameters
     ----------
     chsfile : str
         The name of the file created by chs_create_initial_masters.py
+        (the master hulls and their components for an ensemble).
+    mrgsrc3dir : str
+        The location of the directory containing the mrgsrc3 file
+        for this ensemble. The version is expected to match that used
+        to create the chsfile; a warning is displayed if it is not.
 
     Returns
     -------
@@ -373,8 +483,8 @@ def read_master_hulls(chsfile):
         The contents of the HULLMATCH and HULLLIST block, and metadata
         about the file (e.g. ensemble and CHSVER value). The
         hullmatch and hulllist dicts have keys of Master_Id.
-        If HULLMATCH and HULLLIST can not be found then SRCMATCH
-        and SRCLIST are used.
+        The hullmatch contains information on the stack-level CHS
+        polygons and transform.
 
     Notes
     -----
@@ -384,13 +494,7 @@ def read_master_hulls(chsfile):
     """
 
     ds = pycrates.CrateDataset(chsfile, mode='r')
-
-    prefix = 'HULL'
-    try:
-        cr = ds.get_crate('{}MATCH'.format(prefix))
-    except IndexError:
-        prefix = 'SRC'
-        cr = ds.get_crate('{}MATCH'.format(prefix))
+    cr = ds.get_crate('HULLMATCH')
 
     hullmatch = {}
 
@@ -407,22 +511,84 @@ def read_master_hulls(chsfile):
     if compzero is None:
         compzero = 0
 
+    # As the same stack can appear multiple times, store the
+    # data from the mrgsrc3 files in a dictionary. The assumption
+    # is that this is not going to eat up too much memory.
+    #
+    mrgsrc3files = {}
+
     zs = zip(cr.Master_Id.values,
              cr.STACKID.values,
              cr.COMPONENT.values,
+             cr.EBAND.values,
+             cr.LIKELIHOOD.values,
+             cr.MAN_CODE.values,
+             cr.MRG3REV.values,
+             cr.INCLUDE_IN_CENTROID.values,
+             cr.STKSVDQA.values,
              cr.Match_Type.values)
-    for mid, stackid, component, mtype in zs:
+    for vals in zs:
+        mid, stackid, component, eband, lhood, man_code, \
+            mrg3rev, incl_cen, svdqa, mtype = vals
+
+        # Check there's no upper/lower-case confusion here.
+        assert eband in "busmhw", eband
+
+        # man_code is a single-element array; convert to a scalar
+        # (and add a check in case this ever changes)
+        #
+        assert man_code.shape == (1,)
+        man_code = man_code[0]
+
+        try:
+            mrgsrc3data = mrgsrc3files[stackid]
+        except KeyError:
+            filename = find_mrgsrc3(stackid, mrgsrc3dir)
+            report_revision_difference(filename, mrg3rev)
+
+            mrgsrc3files[stackid] = _read_hulls_from_mrgsrc3(filename)
+            mrgsrc3data = mrgsrc3files[stackid]
+
+        matches = [m3 for m3 in mrgsrc3data
+                   if m3['component'] == component]
+        assert len(matches) == 1
+        m3 = matches[0]
+
+        # Could check for differences between the mhull file and
+        # the mrgsrc3 file, but already have a version check (which
+        # does not mean the values are different), so worry about
+        # adding such a check if it becomes useful.
+        #
         store = {'master_id': mid,
                  'stack': stackid,
                  'component': component - compzero,
                  'compzero': compzero,
-                 'match_type': mtype}
+                 'eband': eband,
+                 'likelihood': lhood,
+
+                 # man_code is the actual code, mancode is a flag
+                 # indicating whether 0 or not (not really needed but
+                 # left in from amalgamating code)
+                 'man_code': man_code,
+                 'mancode': man_code > 0,
+
+                 'mrg3rev': mrg3rev,
+                 'include_in_centroid': incl_cen,
+                 'stksvdqa': svdqa,
+                 'match_type': mtype,
+
+                 # polygon data
+                 'pos': m3['pos'],
+                 'eqpos': m3['eqpos'],
+                 'transform': m3['transform']
+                 }
+
         try:
             hullmatch[mid].append(store)
         except KeyError:
             hullmatch[mid] = [store]
 
-    cr = ds.get_crate('{}LIST'.format(prefix))
+    cr = ds.get_crate('HULLLIST')
 
     hulllist = {}
     zs = zip(cr.Master_Id.values,
