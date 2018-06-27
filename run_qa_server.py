@@ -1503,16 +1503,25 @@ def create_master_hull_page(env,
     # We probably have this information, but convert it into a
     # form easily usable by the template.
     #
-    # TODO: change ordering
-    # TODO: change name
-    # TODO: this should not be needed (e.g. filtering by masterid)
+    # TODO: This overlaps with the data in the stack_polys dictionary,
+    # which is keyed by the stack id.
     #
     components = []
-    for key in ebands_by_component.keys():
+
+    # Can not guarantee that the stacks are ordered lexicographically
+    # within an ensemble, so sort them explicitly.
+    #
+    keylist = list(ebands_by_component.keys())
+    keylist = sorted(keylist,
+                     key=lambda key: (stack_map[key[0]], key[1]))
+
+    for key in keylist:
         if mid_by_component[key] != masterid:
             continue
 
-        components.append({'name': key,
+        name = "{:03d}.{:02d}".format(stack_map[key[0]], key[1])
+
+        components.append({'name': name,
                            'eband': ebands_by_component[key],
                            'likelihood': likelihood_by_component[key],
                            'adjusted': mancode_by_component[key] > 0,

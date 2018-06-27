@@ -1192,6 +1192,27 @@ function setupMasters() {
 
 }
 
+var cptShown = true;
+function toggleComponent() {
+  var lbl;
+  var style;
+  if (cptShown) {
+    lbl = "Show";
+    style = "none";
+  } else {
+    lbl = "Hide";
+    style = "block";
+  }
+
+  // two tables to toggle
+  for (let elname of ['cptinfotable', 'cptchoicetable']) {
+    document.getElementById(elname).style.display = style;
+  }
+
+  cptShown = !cptShown;
+  document.getElementById('componentselect').innerHTML = lbl + " components";
+}
+
 var colorsShown = false;
 function toggleColorMapping() {
   const el = document.getElementById('colormapping');
@@ -1206,6 +1227,32 @@ function toggleColorMapping() {
   colorsShown = !colorsShown;
   document.getElementById('colormappingselect').innerHTML = lbl;
 }
+
+// Toggle whether the *stack* is to be used in the centroid
+// calculation or not.
+//
+// TODO: should change all components with the same stack.
+//
+function changeCentroid(cptval, newsetting) {
+  alert("change centroid not supported\ncomponent= " + cptval +
+       "\nnewsetting= " + newsetting);
+}
+
+// Move this component to a different master.
+// It is not clear if this is needed or we just use the delete option
+// and handle the move somewhere else.
+//
+function changeMaster(cptval) {
+  alert("Change master not supported\ncomponent= " + cptval);
+}
+
+// Delete this component
+//
+function deleteComponent(cptval) {
+  alert("Delete component not supported\ncomponent= " + cptval);
+}
+
+
 
 // Set up the page
 
@@ -1242,6 +1289,42 @@ function updatePage(json) {
   }
 
   setPage(1);
+
+  // Handle the component table:
+  //   - use for centroid
+  //   - change master
+  //   - delete component
+  //
+  // Not clear yet what the best way to address these buttons are
+  // (e.g. class or id)
+  //
+  for (let cenButton of document.getElementsByClassName('include_in_centroid')) {
+    cenButton
+      .addEventListener("click",
+			(e) => { changeCentroid(cenButton.value,
+					        cenButton.checked); });
+  }
+
+  for (let changeButton of document.getElementsByClassName('change_master')) {
+    changeButton
+      .addEventListener("click",
+			(e) => { changeMaster(changeButton.value); });
+  }
+
+  for (let delButton of document.getElementsByClassName('delete_component')) {
+    delButton
+      .addEventListener("click",
+			(e) => { deleteComponent(delButton.value); });
+  }
+
+  // Show/hide the component info.
+  //
+  const cptButton = document.getElementById('componentselect');
+  if (cptButton !== null) {
+    cptButton
+      .addEventListener("click",
+			(e) => { toggleComponent(); });
+  }
 
   // Show/hide the color mapping table.
   //

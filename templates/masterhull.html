@@ -70,21 +70,17 @@
 {% endif %}
       </div>
 
-<!-- HACK -->
-<!--
-      <div id='components1'>
-	<table id='componenttable1'>
+      <div id='componentinfo'>
+	<button id='componentselect' class='button'>Hide components</button>
+	<table id='cptinfotable'>
 	  <thead>
 	    <tr>
-	      <th>Stack.cpt</th>
+	      <th>#</th>
 	      <th>mrg3 rev</th>
-	      <th>band</th>
-	      <th>likelihood</th>
-	      <th>adjusted?</th>
+	      <th>Band</th>
+	      <th>Likelihood</th>
+	      <th>Man Adj</th>
 	      <th>STK SVD QA</th>
-	      <th>Centroid?</th>
-	      <th>Change master</th>
-	      <th>Delete</th>
 	    </tr>
 	  </thead>
 
@@ -96,20 +92,48 @@
 	      <td>{{ h['name'] }}</td>
 	      <td>{{ h['mrg3rev'] }}</td>
 	      <td>{{ h['eband'] }}</td>
-	      <td>{{ h['likelihood'] }}</td>
-	      <td><input type='checkbox' readonly
+	      <td>{{ "%.1f"|format(h['likelihood']) }}</td>
+	      <td><input type='checkbox' disabled
 			 {% if h['adjusted'] %} checked {% endif %}
 	           ></td>
-	      <td><input type='checkbox' readonly
+	      <td><input type='checkbox' disabled
 			 {% if h['svdqa'] %} checked {% endif %}
 	           ></td>
+	    </tr>
+
+{% endfor %}
+
+	  </tbody>
+	</table>
+
+	<table id='cptchoicetable'>
+	  <thead>
+	    <tr>
+	      <th>#</th>
+	      <th>Use for Centroid</th>
+	      <th>Change master</th>
+	      <th>Delete</th>
+	    </tr>
+	  </thead>
+
+	  <tbody>
+
+{% for h in components %}
+
+            <tr>
+	      <td>{{ h['name'] }}</td>
 	      <td><input type='checkbox'
-			 name='include_in_centroid'
+			 class='include_in_centroid'
+			 value='{{ h['name'] }}'
 			 id='include_in_centroid_{{ h['name']  }}'
 			 {% if h['include_in_centroid'] %} checked {% endif %}
 	           ></td>
-	      <td><button type='button'>change master</button></td>
-	      <td><button type='button'>delete cpt</button></td>
+	      <td><button type='button' class='change_master'
+			  value='{{ h['name'] }}'
+			  >change master</button></td>
+	      <td><button type='button' class='delete_component'
+			  value='{{ h['name'] }}'
+			  >delete cpt</button></td>
 	    </tr>
 
 {% endfor %}
@@ -117,7 +141,7 @@
 	  </tbody>
 	</table>
       </div>
--->
+<!-- -->
 
       <div class='info'>
 	<span class='label'>{{ ensemble }}</span>
@@ -251,54 +275,6 @@
 	  <div id='username'>{{ username }}</div>
       -->
 
-      <!-- TODO: where should this go? -->
-      <!--
-      <div id='components'>
-	<table id='componenttable'>
-	  <thead>
-	    <tr>
-	      <th>Stack.cpt</th>
-	      <th>mrg3 rev</th>
-	      <th>band</th>
-	      <th>likelihood</th>
-	      <th>adjusted?</th>
-	      <th>STK SVD QA</th>
-	      <th>Centroid?</th>
-	      <th>Change master</th>
-	      <th>Delete</th>
-	    </tr>
-	  </thead>
-
-	  <tbody>
-
-{% for h in components %}
-
-            <tr>
-	      <td>{{ h['name'] }}</td>
-	      <td>{{ h['mrg3rev'] }}</td>
-	      <td>{{ h['eband'] }}</td>
-	      <td>{{ h['likelihood'] }}</td>
-	      <td><input type='checkbox' readonly
-			 {% if h['adjusted'] %} checked {% endif %}
-	           ></td>
-	      <td><input type='checkbox' readonly
-			 {% if h['svdqa'] %} checked {% endif %}
-	           ></td>
-	      <td><input type='checkbox'
-			 name='include_in_centroid'
-			 id='include_in_centroid_{{ h['name']  }}'
-			 {% if h['include_in_centroid'] %} checked {% endif %}
-	           ></td>
-	      <td><button type='button'>change master</button></td>
-	      <td><button type='button'>delete cpt</button></td>
-	    </tr>
-
-{% endfor %}
-
-	  </tbody>
-	</table>
-      </div>
--->
 
       <img id='pageview'>
 

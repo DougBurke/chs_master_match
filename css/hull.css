@@ -1,7 +1,7 @@
 #infobar {
   float: left;
   width: 20em;
-  /* width: 30em;   try larger width for component list */
+  /* width: 30em;    try larger width for component list */
 }
 
 #infobar div {
@@ -200,6 +200,10 @@ a.hulllink:hover {
 
 .hulllink + .hulllink {
   margin-left: 0.2em;
+}
+
+#componentselect {
+  width: 10em;
 }
 
 #colormapping {
