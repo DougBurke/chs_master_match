@@ -24,6 +24,7 @@ The following files will be written to outdir
 
   field.<ensemble>.v<revision>.json
   hull.<ensemble>.<master_id>.v<revision>.json
+  cpt.<ensemble>.<stack>.<cpt>.v<revision>.json
 
 where revision is the CHSVER keyword in chsfile, and revision,
 master_id, and page_number are written out as three character,
@@ -138,11 +139,10 @@ def create_review_products(chsfile, outdir,
 
     assert len(stacks) > 0
 
-    stacks = list(stacks)
-
     # It might be more useful to sort the stacks by "number of fov
     # files" say, or some other criteria.
     #
+    stacks = list(stacks)
     stacks = sorted(stacks)
 
     # Force a check that we can find these files before any
@@ -187,8 +187,9 @@ def create_review_products(chsfile, outdir,
 
     # Create the ensemble JSON file
     #
+    revstr = "{:03d}".format(revision)
     ensdata = {'name': ensemble,
-               'revision': "{:03d}".format(revision),
+               'revision': revstr,
                'nmasters': len(mids),
                'nstacks': len(stacks),
                'ncpts': ncpts,
@@ -198,10 +199,43 @@ def create_review_products(chsfile, outdir,
                'usernotes': ''
                }
 
-    filename = 'field.{}.v{:03d}.json'.format(ensemble, revision)
+    filename = utils.make_field_name_json(ensemble, revision)
     outfile = os.path.join(outdir, filename)
     open(outfile, 'w').write(json.dumps(ensdata))
     print("Created: {}".format(outfile))
+
+    # Create the per-component JSON files
+    #
+    for stkhulls in hullmatch.values():
+        for stkhull in stkhulls:
+
+            # Need to convert from NumPy booleans to Python ones
+            # otherwise the serialization to JSON fails.
+            #
+            stkdata = {'lastmodified': '',
+                       'stack': stkhull['stack'],
+                       'component': stkhull['component'],
+                       'key': stkhull['key'],
+                       'ensemble': ensemble,
+                       'revision': revstr,
+                       'master_id': stkhull['master_id'],
+                       'likelihood': stkhull['likelihood'],
+                       'eband': stkhull['eband'],
+                       'mrg3rev': stkhull['mrg3rev'],
+                       'mancode':
+                       bool(stkhull['mancode']),
+                       'stksvdqa':
+                       bool(stkhull['stksvdqa']),
+                       'include_in_centroid':
+                       bool(stkhull['include_in_centroid'])}
+
+            filename = utils.make_component_name_json(ensemble,
+                                                      stkhull['stack'],
+                                                      stkhull['component'],
+                                                      revision)
+            outfile = os.path.join(outdir, filename)
+            open(outfile, 'w').write(json.dumps(stkdata))
+            print("Created: {}".format(outfile))
 
     # Per-master hulls
     #
@@ -235,7 +269,7 @@ def create_review_products(chsfile, outdir,
 
         ensdata = {'ensemble': ensemble,
                    'masterid': "{:03d}".format(mid),
-                   'revision': "{:03d}".format(revision),
+                   'revision': revstr,
                    'ncpts': len(hullmatch[mid]),
                    'npages': pinfo['npages'],
                    'useraction': action,
@@ -243,9 +277,7 @@ def create_review_products(chsfile, outdir,
                    'usernotes': ''
                    }
 
-        filename = 'hull.{}.{:03d}.v{:03d}.json'.format(ensemble,
-                                                        mid,
-                                                        revision)
+        filename = utils.make_hull_name_json(ensemble, mid, revision)
         outfile = os.path.join(outdir, filename)
         open(outfile, 'w').write(json.dumps(ensdata))
         print("Created: {}".format(outfile))

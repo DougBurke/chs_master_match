@@ -6,6 +6,10 @@ import glob
 import os
 import sys
 
+from collections import defaultdict
+
+# import six
+
 import numpy as np
 
 import pycrates
@@ -116,6 +120,109 @@ def find_stkevt3(stack, evt3dir):
     return find_single_match(pat)
 
 
+def make_field_name_json(ensemble, revision):
+    """What is the JSON file storing the field data?
+
+    Parameters
+    ----------
+    ensemble : str
+        The ensemble name.
+    revision : int
+        The revision number.
+
+    Returns
+    -------
+    filename : str
+        The name of the JSON file (with no path).
+    """
+
+    # assert isinstance(revision, six.string_types)
+    revision = int(revision)
+
+    return 'field.{}.v{:03d}.json'.format(ensemble, revision)
+
+
+def make_hull_name_json(ensemble, masterid, revision):
+    """What is the JSON file storing the master hull data?
+
+    Parameters
+    ----------
+    ensemble : str
+        The ensemble name.
+    masterid : int
+        The master id value.
+    revision : int
+        The revision number.
+
+    Returns
+    -------
+    filename : str
+        The name of the JSON file (with no path).
+    """
+
+    # assert isinstance(revision, six.string_types)
+    revision = int(revision)
+
+    return 'hull.{}.{:03d}.v{:03d}.json'.format(ensemble,
+                                                masterid,
+                                                revision)
+
+
+def make_poly_name_json(ensemble, masterid, revision):
+    """What is the JSON file storing the master hull polygon?
+
+    Parameters
+    ----------
+    ensemble : str
+        The ensemble name.
+    masterid : int
+        The master id value.
+    revision : int
+        The revision number.
+
+    Returns
+    -------
+    filename : str
+        The name of the JSON file (with no path).
+    """
+
+    # assert isinstance(revision, six.string_types)
+    revision = int(revision)
+
+    return 'poly.{}.{:03d}.v{:03d}.json'.format(ensemble,
+                                                masterid,
+                                                revision)
+
+
+def make_component_name_json(ensemble, stack, component, revision):
+    """What is the JSON file storing the stack-level data?
+
+    Parameters
+    ----------
+    ensemble : str
+        The ensemble name.
+    stack : str
+        The stack name.
+    component : int
+        The component number.
+    revision : int
+        The revision number.
+
+    Returns
+    -------
+    filename : str
+        The name of the JSON file (with no path).
+    """
+
+    # assert isinstance(revision, six.string_types)
+    revision = int(revision)
+
+    return 'cpt.{}.{}.{:02d}.v{:03d}.json'.format(ensemble,
+                                                  stack,
+                                                  component,
+                                                  revision)
+
+
 # I do have code to do this in a "nicer" way, in that it uses the
 # C API of the region library to make constructing and passing
 # around regions a lot nicer in Python. Alternatively, the
@@ -140,7 +247,7 @@ def make_region_string(xy, ndp=2):
         as; if None then let Python decide.
 
     Returns
-    -------
+   -------
     regstr : str
         The polygon region as a string.
 
@@ -464,6 +571,36 @@ def _read_hulls_from_mrgsrc3(mrgsrc3):
     return out
 
 
+def convert_to_key(ensemblemap, stack, component):
+    """Convert stack name and component to a "key".
+
+    This key can be useful when we only want to index by a single
+    value, rather than a tuple (e.g. passing information via
+    JSON/Javascript).
+
+    Parameters
+    ----------
+    ensemblemap : dict
+        The keys are stack names, the values are the integer
+        value for the stack in the ensemble (i.e. the XXX value
+        from the STKIDXXX keyword).
+
+    Returns
+    -------
+    key : str
+        The key - at present a 3-character integer, a '.', and then
+        a 2-character integer, where the numbers are 0-padded to the
+        left.
+    """
+
+    try:
+        return '{:03d}.{:02d}'.format(ensemblemap[stack],
+                                      component)
+    except KeyError:
+        raise ValueError("Unrecognised stack {}".format(stack) +
+                         " in:\n{}".format(ensemblemap))
+
+
 def read_master_hulls(chsfile, mrgsrc3dir):
     """Read in hull information.
 
@@ -496,7 +633,7 @@ def read_master_hulls(chsfile, mrgsrc3dir):
     ds = pycrates.CrateDataset(chsfile, mode='r')
     cr = ds.get_crate('HULLMATCH')
 
-    hullmatch = {}
+    hullmatch = defaultdict(list)
 
     # Map from stack id to the "number" of the stack in the ensemble
     ensemblemap = {}
@@ -549,6 +686,8 @@ def read_master_hulls(chsfile, mrgsrc3dir):
             mrgsrc3files[stackid] = _read_hulls_from_mrgsrc3(filename)
             mrgsrc3data = mrgsrc3files[stackid]
 
+        key = convert_to_key(ensemblemap, stackid, component)
+
         matches = [m3 for m3 in mrgsrc3data
                    if m3['component'] == component]
         assert len(matches) == 1
@@ -562,6 +701,7 @@ def read_master_hulls(chsfile, mrgsrc3dir):
         store = {'master_id': mid,
                  'stack': stackid,
                  'component': component - compzero,
+                 'key': key,
                  'compzero': compzero,
                  'eband': eband,
                  'likelihood': lhood,
@@ -583,10 +723,7 @@ def read_master_hulls(chsfile, mrgsrc3dir):
                  'transform': m3['transform']
                  }
 
-        try:
-            hullmatch[mid].append(store)
-        except KeyError:
-            hullmatch[mid] = [store]
+        hullmatch[mid].append(store)
 
     cr = ds.get_crate('HULLLIST')
 
