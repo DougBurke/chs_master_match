@@ -4,8 +4,16 @@
 
 "use strict";
 
+/*
+ * settings are set up by initialize; that is, they are set up by
+ * the information sent to the template.
+ * state is set up with info returned by the JSON API call.
+ *
+ * The idea is that settings are immutable but state isn't. However,
+ * this is probably not true now we have component-level user-editable
+ * information.
+ */
 var settings;
-
 var state;
 
 var pageNum;
@@ -1061,7 +1069,60 @@ function saveMasters() {
   httpRequest.send(JSON.stringify(store));
 }
 
+// Save component choice (e.g. to delete, move, or change the
+// include-in-centroid setting).
+//
+// At present this does NOT change the local state; need to think
+// about this.
+//
+
+/*
+need to work out how this is going to be called to work out what
+information is being sent in
+*/
+
+function saveComponent(store, field, newval) {
+// XXXXXX
+  let httpRequest = new XMLHttpRequest();
+  if (!httpRequest) {
+      alert("Unable to create a XMLHttpRequest!");
+      return;
+  }
+
+  // Add the spinner to the whole page
+  //
+  let body = document.getElementsByTagName("body")[0];
+  let spinner = new Spinner(spinopts);
+  spinner.spin(body);
+
+  // Update the local state once the save has been made. Note this happens
+  // even during an error, I think.
+  // Since both fields can be changed, change both of them.
+  //
+  httpRequest.addEventListener("load", function() {
+    state.useraction.user = store.useraction;
+    state.usernotes.user = store.usernotes;
+  });
+  httpRequest.addEventListener("error", function() {
+      alert("Unable to save data!");
+  });
+  httpRequest.addEventListener("abort", function() {
+      alert("Unable to save data!");
+  });
+  httpRequest.addEventListener("loadend", function() {
+      spinner.stop();
+  });
+
+  httpRequest.open('POST', '/save/component');
+  httpRequest.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+  httpRequest.send(JSON.stringify(store));
+  
+}
+
 // Save user selections
+//
+// TODO: note that field and newval are not used, so why am I
+//       sending this is
 //
 function saveUser(store, field, newval) {
   let httpRequest = new XMLHttpRequest();
@@ -1135,6 +1196,22 @@ function saveUserChoice(newval) {
 		 useraction: newval,
 		 usernotes: notes};
   saveUser(store);
+}
+
+// At the moment this just interrogates the HTML for the full
+// set of user-editable choices for a stack-level component:
+//   - include_in_centroid
+//   - move to a different master hull
+//   - delete component
+// at each query, rather than relying on some internal store
+// of the state (in other words, this ignores any chance to
+// optimise the runtime by knowing what element was changed).
+//
+// TODO: should there be some other action based on these changes,
+//       e.g. changing the user state?
+//
+function saveComponentChoice(stack, cpt, key) {
+ // XXX
 }
 
 /* play with websamp */
@@ -1273,6 +1350,18 @@ function deleteComponent(cptval) {
 }
 
 
+// Add information about the components to the state store. This
+// could have been included in the JSON processed by updatePage but
+// it would require re-reading information we have already processed
+// when creating the template. So for now copy it over.
+//
+function setupComponents() {
+
+  state.components = {};
+  for (let component of settings.regionstore.components) {
+      state.components[component.name] = component;
+  }
+}
 
 // Set up the page
 
@@ -1280,6 +1369,7 @@ function updatePage(json) {
 
   state = Object.assign({}, json);
 
+  setupComponents();
   setupMasters();
 
   // Do we need a handler for region changes?

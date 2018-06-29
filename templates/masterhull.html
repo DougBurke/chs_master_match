@@ -23,7 +23,7 @@
 
   </head>
 
-  <!-- <body onload='initialize();' onunload='finalize();'> -->
+  <!-- sending in components in as part of regionstore is a hack -->
   <body onload='initialize({ensemble: "{{ ensemble }}",
 	revstr: "{{ revstr }}",
 	mid: "{{ mid }}",
@@ -31,6 +31,7 @@
         enbands_cpt: {{ enbands_cpt }},
 	regionstore: {masterhulls: {{ hull_store }},
                       stackhulls: {{ stack_polys }},
+                      components: {{ components | tojson }},
                       stackpsfs: {{ stack_psfs }}},
 	npages: {{ npages }} });'>
 
@@ -106,6 +107,7 @@
 	  </tbody>
 	</table>
 
+{# FOR NOW HIDE THIS
 	<table id='cptchoicetable'>
 	  <thead>
 	    <tr>
@@ -128,20 +130,30 @@
 			 id='include_in_centroid_{{ h['name']  }}'
 			 {% if h['include_in_centroid'] %} checked {% endif %}
 	           ></td>
-	      <td><button type='button' class='change_master'
-			  value='{{ h['name'] }}'
-			  >change master</button></td>
-	      <td><button type='button' class='delete_component'
-			  value='{{ h['name'] }}'
-			  >delete cpt</button></td>
+
+	      <!-- The following two are mutually exclusive -->
+	      <td><input type='radio'
+			 class='change_master'
+			 value='{{ h['name'] }}'
+			 name='invalid_master_{{ h['name'] }}'
+			 id='change_master_{{ h['name'] }}'
+			 {% if h['masterid'] == 0 %} checked {% endif %}
+			 ></td>
+	      <td><input type='radio'
+			 class='delete_component'
+			 value='{{ h['name'] }}'
+			 name='invalid_master_{{ h['name'] }}'
+			 id='delete_component_{{ h['name'] }}'
+			 {% if h['masterid'] == -1 %} checked {% endif %}
+			  ></td>
 	    </tr>
 
 {% endfor %}
 
 	  </tbody>
 	</table>
+#}
       </div>
-<!-- -->
 
       <div class='info'>
 	<span class='label'>{{ ensemble }}</span>

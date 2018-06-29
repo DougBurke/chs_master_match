@@ -239,7 +239,7 @@ def read_json(infile):
     return jcts
 
 
-def setup_user_setting(store, key):
+def setup_user_setting(store, key, stringval=True):
     """Add in user-level version.
 
     This is highly-specialized. It changes the key value to
@@ -250,27 +250,36 @@ def setup_user_setting(store, key):
     Parameters
     ----------
     store : dict
-        A dictiionary which is assumed to contain the supplied
-        key, and the value of the key is a string.
+        A dictionary which is assumed to contain the supplied key.
     key : dict_key
         The key value.
+    stringval : bool, optional
+        If True then the value must be a string.
 
     Returns
     -------
     flag : bool
-        If False then the stored value was nto a string so nothing
+        If False then the stored value was not a string so nothing
         has been changed. It is expected that this will cause
-        down stream to trigger an error handler.
+        down stream to trigger an error handler. This is only
+        set to False if stringval is True.
 
+    Notes
+    -----
+    If the key does not exist in the input store then it its "proposed"
+    value is set to '' (stringval is True) or None (otherwise).
     """
 
     try:
         v = store[key]
     except KeyError:
         warn("NO {} field".format(key))
-        v = ''
+        if stringval:
+            v = ''
+        else:
+            v = None
 
-    if not isinstance(v, six.string_types):
+    if stringval and not isinstance(v, six.string_types):
         errlog("{} is not a string but {}".format(key, v))
         return False
 
@@ -303,10 +312,9 @@ def read_ensemble_hull_json(datadir, userdir,
 
     """
 
-    infile = os.path.join(datadir, ensemble,
-                          'hull.{}.{:03d}.v{}.json'.format(ensemble,
-                                                           mid,
-                                                           revision))
+    filename = utils.make_hull_name_json(ensemble, mid, revision)
+
+    infile = os.path.join(datadir, ensemble, filename)
     jcts = read_json(infile)
     if jcts is None:
         return None
@@ -319,10 +327,7 @@ def read_ensemble_hull_json(datadir, userdir,
 
     # Now add in any user information
     #
-    infile = os.path.join(userdir, ensemble,
-                          'hull.{}.{:03d}.v{}.json'.format(ensemble,
-                                                           mid,
-                                                           revision))
+    infile = os.path.join(userdir, ensemble, filename)
 
     # This is an optional file, so avoid warning messages in the log
     # if we can help it.
@@ -515,7 +520,7 @@ def read_ensemble_status(datadir, userdir, ensemble, revision):
 
     # Try the user and then proposed settings.
     #
-    pat = "field.{}.v{}.json".format(ensemble, revision)
+    pat = utils.make_field_name_json(ensemble, revision)
 
     # pick an out-of-bounds value; normally I'd use None but
     # this is a possible value, so use a numeric value.
@@ -554,6 +559,72 @@ def read_ensemble_status(datadir, userdir, ensemble, revision):
     errlog("no status for ensemble " +
            "{} version {}".format(ensemble, revision))
     return "unknown"
+
+
+def read_component_hull_json(datadir, userdir, ensemble,
+                             stack, component, revision):
+    """What do we have stored for this component hull?
+
+    Parameters
+    ----------
+    datadir : str
+        The path to the directory containing the ensemble-level
+        products. These are the "proposed" products.
+    userdir : str
+        The path to the directory containing the user's decisions.
+    ensemble : str
+        The ensemble.
+    stack : str
+        The stack identifier (e.g. 'acisf...' or 'hrcf...')
+    component : int
+        The component number of the stack-level hull.
+    revision : str
+        The revision value (in 3-digit form).
+
+    Returns
+    -------
+    ans : dict or None
+        The contents, or None if there was an error.
+
+    """
+
+    filename = utils.make_component_name_json(ensemble,
+                                              stack,
+                                              component,
+                                              revision)
+
+    infile = os.path.join(datadir, ensemble, filename)
+    jcts = read_json(infile)
+    if jcts is None:
+        return None
+
+    # Setup for user information.
+    #
+    usermodkeys = ['master_id', 'include_in_centroid', 'lastmodified']
+    usermodstrings = [False, False, True]
+
+    for key, flag in zip(usermodkeys, usermodstrings):
+        if not setup_user_setting(jcts, key, stringval=flag):
+            return None
+
+    # Now add in any user information
+    #
+    infile = os.path.join(userdir, ensemble, filename)
+
+    # This is an optional file, so avoid warning messages in the log
+    # if we can help it.
+    if not os.path.exists(infile):
+        return jcts
+
+    ucts = read_json(infile)
+    if ucts is None:
+        return jcts
+
+    for key in usermodkeys:
+        if key in ucts:
+            jcts[key]['user'] = ucts[key]
+
+    return jcts
 
 
 def parse_datadir(datadir, userdir):
@@ -836,7 +907,7 @@ def save_ensemble(userdir, data):
     else:
         os.mkdir(outdir)
 
-    outname = 'field.{}.v{}.json'.format(ensemble, version)
+    outname = utils.make_field_name_json(ensemble, version)
     outfile = os.path.join(outdir, outname)
 
     store = {"name": ensemble,
@@ -870,9 +941,7 @@ def save_master(userdir, data):
     else:
         os.mkdir(outdir)
 
-    outname = 'hull.{}.{:03d}.v{}.json'.format(ensemble,
-                                               masterid,
-                                               version)
+    outname = utils.make_hull_name_json(ensemble, masterid, version)
     outfile = os.path.join(outdir, outname)
 
     store = {"ensemble": ensemble,
@@ -907,9 +976,7 @@ def save_master_poly(userdir, data):
     else:
         os.mkdir(outdir)
 
-    outname = 'poly.{}.{:03d}.v{}.json'.format(ensemble,
-                                               masterid,
-                                               version)
+    outname = utils.make_poly_name_json(ensemble, masterid, version)
     outfile = os.path.join(outdir, outname)
 
     store = {"ensemble": ensemble,
@@ -917,6 +984,52 @@ def save_master_poly(userdir, data):
              "lastmodified": time.asctime(),
              "polygons": data['polygons'],
              "revision": version}
+    with open(outfile, 'w') as fh:
+        fh.write(json.dumps(store))
+
+
+def save_component(userdir, data):
+    """Save the stack-level hull details.
+
+    Parameters
+    ----------
+    userdir : str
+        The location for the user-stored data.
+    data : dict
+        The JSON dictionary containing the elements to write out.
+    """
+
+    ensemble = data['ensemble']
+    version = data['revision']  # this is in string form, 0 padded
+    stack = data['stack']
+    component = data['component']
+
+    outdir = os.path.join(userdir, ensemble)
+    if os.path.exists(outdir):
+        if not os.path.isdir(outdir):
+            raise IOError("Exists but not a directory! {}".format(outdir))
+    else:
+        os.mkdir(outdir)
+
+    outname = utils.make_component_name_json(ensemble,
+                                             stack,
+                                             component,
+                                             version)
+    outfile = os.path.join(outdir, outname)
+
+    # For now we do not copy over the other fields (that should be
+    # read only) that are in the "original" version of this file
+    # (such as likelihood, band, mrg3rev).
+    #
+    store = {"ensemble": ensemble,
+             "stack": stack,
+             "component": component,
+             "lastmodified": time.asctime(),
+             "revision": version,
+             # DO WE NEED TO GET THE USER SETTING?
+             "master_id": data['master_id'],
+             "include_in_centroid": data['include_in_centroid']
+             }
     with open(outfile, 'w') as fh:
         fh.write(json.dumps(store))
 
@@ -1154,9 +1267,6 @@ def create_master_hull_page(env,
     # The component values are corrected for the COMPZERO keyword
     # (if set).
     #
-    # NOTE: there is code that does something similar to this
-    #       above
-    #
     try:
         ds = pycrates.CrateDataset(hullfile, mode='r')
     except IOError as exc:
@@ -1343,10 +1453,8 @@ def create_master_hull_page(env,
         store['wcs_orig'] = wcs_orig
 
         # Has the user got their own version?
-        polyfile = os.path.join(userdir, ensemble,
-                                'poly.{}.{:03d}.v{}.json'.format(ensemble,
-                                                                 midval,
-                                                                 revstr))
+        polyname = utils.make_poly_name_json(ensemble, midval, revstr)
+        polyfile = os.path.join(userdir, ensemble, polyname)
         if os.path.exists(polyfile):
             jcts = read_json(polyfile)
             if jcts is None:
@@ -1521,12 +1629,24 @@ def create_master_hull_page(env,
 
         name = "{:03d}.{:02d}".format(stack_map[key[0]], key[1])
 
+        """
+        TODO:
+        these values need to be set up from the JSON file
+
+        we need to have user/proposed values for the over-ridable values
+
+        """
+
+        # Ensure values are Python bools, not NumPy ones
         components.append({'name': name,
+                           'masterid': int(masterid),
                            'eband': ebands_by_component[key],
                            'likelihood': likelihood_by_component[key],
                            'adjusted': mancode_by_component[key] > 0,
-                           'svdqa': svdqa_by_component[key],
-                           'include_in_centroid': centroid_by_component[key],
+                           'svdqa':
+                           bool(svdqa_by_component[key]),
+                           'include_in_centroid':
+                           bool(centroid_by_component[key]),
                            'mrg3rev': mrgrev_by_component[key]})
 
     # Do we know the actual size here?
@@ -1629,6 +1749,51 @@ def send_file(obj, infile, mimetype, headers=None):
 
     obj.end_headers()
     obj.wfile.write(cts)
+
+
+def send_ensemble_hull_status(server,
+                              datadir, userdir, ensemble, revision,
+                              masterid):
+    """Return - as JSON - the status information for this master hull.
+
+    Parameters
+    ----------
+    server
+        Used to send the response (404 or JSON).
+    datadir : str
+        The path to the directory containing the ensemble-level
+        products.
+    userdir : str
+        The path to the directory containing the user's decisions.
+    ensemble : str
+        The ensemble (assumed to be valid at this point).
+    revision : str
+        This is assumed to be in 3-digit, 0 padded (left) form.
+    masterid : int.
+        The master id.
+
+    Notes
+    -----
+    Should this include the component information? That is, the
+    masterid and include_in_centroid values for each stack-level
+    component in the master. At present this is being added in
+    masterhull.js since we have the information there, but this is
+    all rather muddled.
+    """
+
+    ensemble_status = read_ensemble_status(datadir, userdir,
+                                           ensemble, revision)
+    cts = read_ensemble_hull_json(datadir, userdir,
+                                  ensemble, masterid, revision)
+    if cts is None:
+        server.send_error(404)
+        return
+
+    cts['ensemble_status'] = ensemble_status
+
+    # TODO: add in component information?
+
+    server.send_as_json(cts)
 
 
 class CHSHandler(BaseHTTPRequestHandler):
@@ -1740,6 +1905,7 @@ class CHSHandler(BaseHTTPRequestHandler):
                         'save/ensemble': save_ensemble,
                         'save/master': save_master,
                         'save/masterpoly': save_master_poly,
+                        'save/component': save_component,
                         'save/datatable': save_datatable
                         }[path]
         except KeyError:
@@ -1845,16 +2011,10 @@ class CHSHandler(BaseHTTPRequestHandler):
         except ValueError:
             errlog("Invalid master id: {}".format(toks[2]))
             self.send_error(404)
+            return
 
-        ensemble_status = read_ensemble_status(datadir, userdir,
-                                               ensemble, revision)
-        cts = read_ensemble_hull_json(datadir, userdir,
-                                      ensemble, masterid, revision)
-        if cts is None:
-            self.send_error(404)
-        else:
-            cts['ensemble_status'] = ensemble_status
-            self.send_as_json(cts)
+        send_ensemble_hull_status(self, datadir, userdir, ensemble,
+                                  revision, masterid)
 
     def get_image(self, path):
         """Return the image data.
