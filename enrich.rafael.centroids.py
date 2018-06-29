@@ -27,10 +27,12 @@ choose.
 """
 
 from collections import defaultdict
-import glob
 import os
 
 import pycrates
+
+import chs_utils as utils
+
 
 # do not want to rely on the now-standard Python Enum or its backport
 # so using https://www.pythoncentral.io/how-to-implement-an-enum-in-python/
@@ -38,6 +40,7 @@ import pycrates
 def enum(*args):
     enums = dict(zip(args, range(len(args))))
     return type('Enum', (), enums)
+
 
 # ACIS only, HRC only, mixed, or user has to decide
 #
@@ -106,14 +109,10 @@ def read_ensemble(indir, ensemble):
     """Read master-hull file."""
 
     pat = os.path.join(indir, ensemble,
-                       'master_hulls.{}.*.fits'.format(ensemble))
-    matches = glob.glob(pat)
-    if len(matches) == 0:
-        raise IOError("No match for {}".format(pat))
-    elif len(matches) > 1:
-        raise IOError("Multiple matches for {}\nExpected v001 only".format(pat))
+                       utils.make_mhull_name(ensemble))
+    match = utils.find_single_match(pat)
 
-    infile = "{}[HULLMATCH][cols Master_Id,STACKID,COMPONENT]".format(matches[0])
+    infile = "{}[HULLMATCH][cols Master_Id,STACKID,COMPONENT]".format(match)
     cr = pycrates.read_file(infile)
     compzero = cr.get_key_value('COMPZERO')
     if compzero is None:
@@ -200,6 +199,7 @@ def find_components(mids, hulls):
 def print_header():
 
     print("# stack cpt use_cen")
+
 
 def doit(indir, infile):
     """Process Rafael's file.

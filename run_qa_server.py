@@ -1243,8 +1243,7 @@ def create_master_hull_page(env,
         return 404, out
 
     hullfile = os.path.join(dname,
-                            'master_hulls.' +
-                            '{}.v{}.fits'.format(ensemble, revstr))
+                            utils.make_mhull_name(ensemble, revision))
     if not os.path.isfile(hullfile):
         errlog("missing hullfile {}".format(hullfile))
         out = "<!DOCTYPE html><html><head><title>INTERNAL ERROR</title>"
@@ -2197,7 +2196,7 @@ if __name__ == "__main__":
     userdir = os.path.normpath(os.getcwd())
 
     # Validation check: ensure that the user directory is *not*
-    # within the data directory, to avois over-writing files.
+    # within the data directory, to avoid over-writing files.
     #
     cdir = os.path.commonprefix([datadir, userdir])
 

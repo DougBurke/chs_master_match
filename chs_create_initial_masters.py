@@ -1076,8 +1076,7 @@ def process_ensemble(ensemblefile, ensemble, outdir,
 
     # Write out the "cmst3" file, as a FITS file.
     #
-    filename = 'master_hulls.{}.v{:03d}.fits'.format(ensemble,
-                                                     revision)
+    filename = utils.make_mhull_name(ensemble, revision)
     outfile = os.path.join(outdir, filename)
     write_hulls(ensemble, outfile, master_hulls, hull_areas,
                 outlines,

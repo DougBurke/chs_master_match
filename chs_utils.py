@@ -44,7 +44,7 @@ def logmsg(msg):
 def find_single_match(pat):
     """Return the file name matching the pattern.
 
-    If there's a single match, return it, otherwise file (so
+    If there's a single match, return it, otherwise error (so
     if there's no matches or multiple matches).
 
     Parameters
@@ -118,6 +118,32 @@ def find_stkevt3(stack, evt3dir):
     pat = "{}*evt3.fits*".format(stack)
     pat = os.path.join(evt3dir, pat)
     return find_single_match(pat)
+
+
+def make_mhull_name(ensemble, revision=None):
+    """What is the name of the master hull file?
+
+    If the revision is not given then a wild card is added ("*").
+
+    Parameters
+    ----------
+    ensemble : str
+        The ensemble name.
+    revision : int or None, optional
+        The revision number (if known).
+
+    Returns
+    -------
+    filename : str
+        The name of the mhull file (with no path).
+    """
+
+    if revision is None:
+        revstr = "*"
+    else:
+        revstr = "{:03d}".format(int(revision))
+
+    return 'master_hulls.{}.v{}.fits'.format(ensemble, revstr)
 
 
 def make_field_name_json(ensemble, revision):
