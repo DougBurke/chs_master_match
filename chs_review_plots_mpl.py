@@ -151,14 +151,14 @@ def read_xmdat3(xmdat3dir, stack):
     infile = os.path.join(xmdat3dir, stack,
                           '{}N000_xmdat3.fits'.format(stack))
     if not os.path.isfile(infile):
-        utils.logmsg("no xmdat3 file {}".format(infile))
+        utils.logonce("no xmdat3 file {}".format(infile))
         return None
 
     try:
         cr = pycrates.read_file(infile +
                                 "[cols ra,dec,psf_r0,psf_r1,psf_ang]")
     except IOError:
-        utils.logmsg("unable to read XMDAT3 file {}".format(infile))
+        utils.logonce("unable to read XMDAT3 file {}".format(infile))
         raise
 
     out = []

@@ -69,9 +69,7 @@ import gzip
 import json
 import os
 import sys
-import time
 
-import six
 from six.moves.BaseHTTPServer import BaseHTTPRequestHandler, \
     HTTPServer
 
@@ -89,54 +87,6 @@ except ImportError:
     sys.exit(1)
 
 import chs_utils as utils
-
-
-def log(msg, level='LOG'):
-    """Log a message.
-
-    Parameters
-    ----------
-    msg: str
-        The message
-    """
-
-    print("{}: {}".format(level, msg))
-
-
-def dbg(msg):
-    """Log a debug message.
-
-    Parameters
-    ----------
-    msg: str
-        The message
-    """
-
-    log(msg, level='DEBUG')
-
-
-def warn(msg):
-    """Log a warning message.
-
-    Parameters
-    ----------
-    msg: str
-        The message
-    """
-
-    log(msg, level='WARNING')
-
-
-def errlog(msg):
-    """Log an error message.
-
-    Parameters
-    ----------
-    msg: str
-        The message
-    """
-
-    log(msg, level='ERROR')
 
 
 class CHSServer(HTTPServer):
@@ -213,420 +163,6 @@ def valid_ensemble(datadir, ensemble):
     return os.path.isdir(path)
 
 
-def read_json(infile):
-    """Return data stored as JSON in the input file.
-
-    Parameters
-    ----------
-    infile : str
-        The full path to the JSON file.
-
-    Returns
-    -------
-    ans : dict or array or None
-        The contents, or None if there was an error.
-    """
-
-    try:
-        with open(infile, 'r') as fh:
-            cts = fh.read()
-            jcts = json.loads(cts)
-
-    except Exception as exc:
-        errlog("error reading JSON from {}\n{}".format(infile, exc))
-        return None
-
-    return jcts
-
-
-def setup_user_setting(store, key, stringval=True):
-    """Add in user-level version.
-
-    This is highly-specialized. It changes the key value to
-    be a dictionary with 'proposed' and 'user' keywords,
-    storing the current value under 'proposed' and setting
-    'user' to None.
-
-    Parameters
-    ----------
-    store : dict
-        A dictionary which is assumed to contain the supplied key.
-    key : dict_key
-        The key value.
-    stringval : bool, optional
-        If True then the value must be a string.
-
-    Returns
-    -------
-    flag : bool
-        If False then the stored value was not a string so nothing
-        has been changed. It is expected that this will cause
-        down stream to trigger an error handler. This is only
-        set to False if stringval is True.
-
-    Notes
-    -----
-    If the key does not exist in the input store then it its "proposed"
-    value is set to '' (stringval is True) or None (otherwise).
-    """
-
-    try:
-        v = store[key]
-    except KeyError:
-        warn("NO {} field".format(key))
-        if stringval:
-            v = ''
-        else:
-            v = None
-
-    if stringval and not isinstance(v, six.string_types):
-        errlog("{} is not a string but {}".format(key, v))
-        return False
-
-    store[key] = {'proposed': v, 'user': None}
-    return True
-
-
-def read_ensemble_hull_json(datadir, userdir,
-                            ensemble, mid, revision):
-    """Return JSON-stored data for the masters.
-
-    Parameters
-    ----------
-    datadir : str
-        The path to the directory containing the ensemble-level
-        products.
-    userdir : str
-        The path to the directory containing the user's decisions.
-    ensemble : str
-        The ensemble.
-    mid : int
-        The master id.
-    revision : str
-        Expected to be 001, ...
-
-    Returns
-    -------
-    ans : dict or None
-        The contents, or None if there was an error.
-
-    """
-
-    filename = utils.make_hull_name_json(ensemble, mid, revision)
-
-    infile = os.path.join(datadir, ensemble, filename)
-    jcts = read_json(infile)
-    if jcts is None:
-        return None
-
-    # Setup for user information.
-    #
-    for key in ['usernotes', 'useraction', 'lastmodified']:
-        if not setup_user_setting(jcts, key):
-            return None
-
-    # Now add in any user information
-    #
-    infile = os.path.join(userdir, ensemble, filename)
-
-    # This is an optional file, so avoid warning messages in the log
-    # if we can help it.
-    if not os.path.exists(infile):
-        return jcts
-
-    ucts = read_json(infile)
-    if ucts is None:
-        return jcts
-
-    for key in ['usernotes', 'useraction', 'lastmodified']:
-        if key in ucts:
-            jcts[key]['user'] = ucts[key]
-
-    return jcts
-
-
-def read_ensemble_json(datadir, userdir, ensemble):
-    """Return JSON data from the ensemble.
-
-    The returned structure contains all the versions for this
-    ensemble. The "current" version is taken to be the highest
-    version number.
-
-    Parameters
-    ----------
-    datadir : str
-        The path to the directory containing the ensemble-level
-        products. These are the "proposed" products.
-    userdir : str
-        The path to the directory containing the user's decisions.
-    ensemble : str
-        The ensemble.
-
-    Returns
-    -------
-    ans : dict or None
-        The contents, or None if there was an error.
-
-    Notes
-    -----
-
-    state['latest_version'] => str (001, 002, ..)
-    state['versions'] => dict, keys are version
-          ['nstacks']
-          ['nmasters']  == len(masters)
-          ['masters'] = list of dict
-                  ['masterid'] => str (001, ...)
-                  ['ncpts'] == len(cpts)
-                  ---- ['cpts'] => list of ?
-                  ['usernotes'] =>
-                  ['useraction'] =>
-                  ['lastmodified'] =>
-
-           ['usernotes']
-           ['lastmodified']
-
-    The usernotes, useraction, lastmodified, and status fields are
-    dicts with two keys:
-      proposed
-      user
-    which allows the user to "over ride" the proposed value.
-
-hmmm, the JSON data has {"status": "todo", "stackmap": {"acisfJ1705367m403832_001": 3, "acisfJ1704041m414416_001": 1, "acisfJ1702545m412821_001": 0, "acisfJ1705559m410515_001": 4, "acisfJ1704448m410953_001": 2}, "nmasters": 1, "name": "ens0000900_001", "lastmodified": "", "ncpts": 2, "usernotes": "", "nstacks": 2, "revision": "001"}
-
-
-    """
-
-    # Process the proposed settings first
-    #
-    pat = "field.{}.*.json".format(ensemble)
-    inpat = os.path.join(datadir, ensemble, pat)
-    matches = glob.glob(inpat)
-    if len(matches) == 0:
-        errlog("no field.json files found for ensemble " +
-               "{} - {}".format(ensemble, inpat))
-        return None
-
-    store = {'versions': {}}
-    for match in matches:
-        jcts = read_json(match)
-        if jcts is None:
-            continue
-
-        try:
-            v = jcts['revision']
-        except KeyError:
-            log("missing revision keyword in {}".format(match))
-            continue
-
-        # this should not happen, so do not worry too much about the
-        # error handler
-        if v in store['versions']:
-            log("multiple revision={} in {}".format(v, match))
-            continue
-
-        hulls = []
-        for mid in range(1, jcts['nmasters'] + 1):
-            hull = read_ensemble_hull_json(datadir, userdir,
-                                           ensemble, mid, v)
-            if hull is None:
-                # if there is a problem reading in a single hull, then
-                # bail out for the whole thing
-                return None
-
-            hulls.append(hull)
-
-        if len(hulls) == 0:
-            log("no masters for revision {} in {}".format(v, match))
-            continue
-
-        if 'masters' in jcts:
-            log("overwriting masters setting in {}".format(match))
-
-        jcts['masters'] = hulls
-        store['versions'][v] = jcts
-
-        # Override those keys that need proposed/user versions.
-        #
-        for key in ['usernotes', 'lastmodified', 'status']:
-            if not setup_user_setting(jcts, key):
-                return None
-
-    revs = list(store['versions'].keys())
-    if len(revs) == 0:
-        errlog("no JSON data read from ensemble: " +
-               "{} {}".format(datadir, ensemble))
-        return None
-
-    revs = sorted(revs, key=int, reverse=True)
-    store['latest_version'] = revs[0]
-
-    # Now check for user overrides: at present only at the
-    # field level.
-    #
-    inpat = os.path.join(userdir, ensemble, pat)
-    matches = glob.glob(inpat)
-    if len(matches) == 0:
-        return store
-
-    # Assume very-limited metadata here.
-    #
-    for match in matches:
-        jcts = read_json(match)
-
-        revision = jcts['revision']
-
-        try:
-            base = store['versions'][revision]
-        except KeyError:
-            warn("{} has invalid version {}".format(match,
-                                                    revision))
-            continue
-
-        for k in ['lastmodified', 'usernotes', 'status']:
-            try:
-                base[k]['user'] = jcts[k]
-            except KeyError:
-                # for now do not require the user to have all fields
-                # set.
-                pass
-
-    return store
-
-
-def read_ensemble_status(datadir, userdir, ensemble, revision):
-    """What is the ensemble status?
-
-    What is the current status of the ensemble? This is based on
-    read_ensemble_json.
-
-
-    Parameters
-    ----------
-    datadir : str
-        The path to the directory containing the ensemble-level
-        products. These are the "proposed" products.
-    userdir : str
-        The path to the directory containing the user's decisions.
-    ensemble : str
-        The ensemble.
-    revision : str
-        The revision value (in 3-digit form).
-
-    Returns
-    -------
-    status : {'todo', 'review', 'done'}
-
-    """
-
-    # Try the user and then proposed settings.
-    #
-    pat = utils.make_field_name_json(ensemble, revision)
-
-    # pick an out-of-bounds value; normally I'd use None but
-    # this is a possible value, so use a numeric value.
-    #
-    not_present = -1
-
-    def lookin(indir):
-
-        infile = os.path.join(indir, ensemble, pat)
-        if not os.path.exists(infile):
-            return not_present
-
-        try:
-            jcts = read_json(infile)
-        except IOError:
-            return not_present
-
-        try:
-            return jcts['status']
-        except KeyError:
-            return not_present
-
-    ans = lookin(userdir)
-    if ans is not None and ans != not_present:
-        return ans
-
-    ans = lookin(datadir)
-    if ans is not None and ans != not_present:
-        return ans
-
-    if ans is None:
-        warn("status=None for ensemble " +
-             "{} version {}".format(ensemble, revision))
-        return "unknown"
-
-    errlog("no status for ensemble " +
-           "{} version {}".format(ensemble, revision))
-    return "unknown"
-
-
-def read_component_hull_json(datadir, userdir, ensemble,
-                             stack, component, revision):
-    """What do we have stored for this component hull?
-
-    Parameters
-    ----------
-    datadir : str
-        The path to the directory containing the ensemble-level
-        products. These are the "proposed" products.
-    userdir : str
-        The path to the directory containing the user's decisions.
-    ensemble : str
-        The ensemble.
-    stack : str
-        The stack identifier (e.g. 'acisf...' or 'hrcf...')
-    component : int
-        The component number of the stack-level hull.
-    revision : str
-        The revision value (in 3-digit form).
-
-    Returns
-    -------
-    ans : dict or None
-        The contents, or None if there was an error.
-
-    """
-
-    filename = utils.make_component_name_json(ensemble,
-                                              stack,
-                                              component,
-                                              revision)
-
-    infile = os.path.join(datadir, ensemble, filename)
-    jcts = read_json(infile)
-    if jcts is None:
-        return None
-
-    # Setup for user information.
-    #
-    usermodkeys = ['master_id', 'include_in_centroid', 'lastmodified']
-    usermodstrings = [False, False, True]
-
-    for key, flag in zip(usermodkeys, usermodstrings):
-        if not setup_user_setting(jcts, key, stringval=flag):
-            return None
-
-    # Now add in any user information
-    #
-    infile = os.path.join(userdir, ensemble, filename)
-
-    # This is an optional file, so avoid warning messages in the log
-    # if we can help it.
-    if not os.path.exists(infile):
-        return jcts
-
-    ucts = read_json(infile)
-    if ucts is None:
-        return jcts
-
-    for key in usermodkeys:
-        if key in ucts:
-            jcts[key]['user'] = ucts[key]
-
-    return jcts
-
-
 def parse_datadir(datadir, userdir):
     """Extract useful information from the diretory.
 
@@ -652,7 +188,7 @@ def parse_datadir(datadir, userdir):
     pat = os.path.join(datadir, "ens*")
     ensembledirs = glob.glob(pat)
     if len(ensembledirs) == 0:
-        errlog("no ensemble dirs found in {}".format(datadir))
+        utils.errlog("no ensemble dirs found in {}".format(datadir))
         return None
 
     """
@@ -670,9 +206,9 @@ def parse_datadir(datadir, userdir):
         ensemble = ensembledir.split('/')[-1]
         # UGH: this is ugly; note the /../ added to the path
         # TODO: fix this
-        jcts = read_ensemble_json(ensembledir + "/../",
-                                  userdir,
-                                  ensemble)
+        jcts = utils.read_ensemble_json(ensembledir + "/../",
+                                        userdir,
+                                        ensemble)
         if jcts is None:
             store[ensemble] = {'error': True, 'ensemble': ensemble}
             continue
@@ -734,7 +270,7 @@ def get_data_summary(datadir, userdir):
     # Has the user saved any notes?
     infile = os.path.join(userdir, 'summary.json')
     if os.path.isfile(infile):
-        jcts = read_json(infile)
+        jcts = utils.read_json(infile)
         if jcts is not None:
             out['usernotes'] = jcts['usernotes']
             out['lastmodified'] = jcts['lastmodified']
@@ -742,7 +278,7 @@ def get_data_summary(datadir, userdir):
     # How about the datatable settings?
     infile = os.path.join(userdir, 'datatable.json')
     if os.path.isfile(infile):
-        jcts = read_json(infile)
+        jcts = utils.read_json(infile)
         if jcts is not None:
             out['datatable'] = jcts
 
@@ -766,23 +302,23 @@ def read_ds9_region(infile):
 
                 if csys is None:
                     if l.find(' ') != -1:
-                        errlog("expected coordsys, found " +
-                               "[{}] in {}".format(l, infile))
+                        utils.errlog("expected coordsys, found " +
+                                     "[{}] in {}".format(l, infile))
                         return None
 
                     csys = l
                     continue
 
                 if not l.startswith('polygon('):
-                    errlog("expected polygon(...), found " +
-                           "[{}] in {}".format(l, infile))
+                    utils.errlog("expected polygon(...), found " +
+                                 "[{}] in {}".format(l, infile))
                     return None
 
                 return "{}; {}".format(csys, l)
 
     except IOError as exc:
-        errlog("can not read region file:" +
-               "\n{}\n{}".format(infile, exc))
+        utils.errlog("can not read region file:" +
+                     "\n{}\n{}".format(infile, exc))
         return None
 
 
@@ -845,201 +381,12 @@ def regstr_to_coords(regstr):
     return list(cs[0]), list(cs[1]), None
 
 
-def save_datatable(userdir, data):
-    """Save the data table details.
-
-    This could be included in the summary page, but for now
-    separate it out.
-
-    Parameters
-    ----------
-    userdir : str
-        The location for the user-stored data.
-    data : dict
-        The JSON dictionary containing the elements to write out.
-    """
-
-    outname = 'datatable.json'
-    outfile = os.path.join(userdir, outname)
-
-    with open(outfile, 'w') as fh:
-        fh.write(json.dumps(data))
-
-
-def save_summary(userdir, data):
-    """Save the summary details.
-
-    Parameters
-    ----------
-    userdir : str
-        The location for the user-stored data.
-    data : dict
-        The JSON dictionary containing the elements to write out.
-    """
-
-    outname = 'summary.json'
-    outfile = os.path.join(userdir, outname)
-
-    store = {"lastmodified": time.asctime(),
-             "usernotes": data['usernotes']}
-    with open(outfile, 'w') as fh:
-        fh.write(json.dumps(store))
-
-
-def save_ensemble(userdir, data):
-    """Save the ensemble-level details.
-
-    Parameters
-    ----------
-    userdir : str
-        The location for the user-stored data.
-    data : dict
-        The JSON dictionary containing the elements to write out.
-    """
-
-    ensemble = data['name']
-    version = data['revision']  # this is in string form, 0 padded
-
-    outdir = os.path.join(userdir, ensemble)
-    if os.path.exists(outdir):
-        if not os.path.isdir(outdir):
-            raise IOError("Exists but not a directory! {}".format(outdir))
-    else:
-        os.mkdir(outdir)
-
-    outname = utils.make_field_name_json(ensemble, version)
-    outfile = os.path.join(outdir, outname)
-
-    store = {"name": ensemble,
-             "lastmodified": time.asctime(),
-             "usernotes": data['usernotes'],
-             "status": data['status'],
-             "revision": version}
-    with open(outfile, 'w') as fh:
-        fh.write(json.dumps(store))
-
-
-def save_master(userdir, data):
-    """Save the master-level details.
-
-    Parameters
-    ----------
-    userdir : str
-        The location for the user-stored data.
-    data : dict
-        The JSON dictionary containing the elements to write out.
-    """
-
-    ensemble = data['ensemble']
-    version = data['revision']  # this is in string form, 0 padded
-    masterid = data['masterid']
-
-    outdir = os.path.join(userdir, ensemble)
-    if os.path.exists(outdir):
-        if not os.path.isdir(outdir):
-            raise IOError("Exists but not a directory! {}".format(outdir))
-    else:
-        os.mkdir(outdir)
-
-    outname = utils.make_hull_name_json(ensemble, masterid, version)
-    outfile = os.path.join(outdir, outname)
-
-    store = {"ensemble": ensemble,
-             "masterid": masterid,
-             "lastmodified": time.asctime(),
-             "usernotes": data['usernotes'],
-             "useraction": data['useraction'],
-             "revision": version}
-    with open(outfile, 'w') as fh:
-        fh.write(json.dumps(store))
-
-
-def save_master_poly(userdir, data):
-    """Save the masterhull polygon(s).
-
-    Parameters
-    ----------
-    userdir : str
-        The location for the user-stored data.
-    data : dict
-        The JSON dictionary containing the elements to write out.
-    """
-
-    ensemble = data['ensemble']
-    version = data['revision']  # this is in string form, 0 padded
-    masterid = data['masterid']
-
-    outdir = os.path.join(userdir, ensemble)
-    if os.path.exists(outdir):
-        if not os.path.isdir(outdir):
-            raise IOError("Exists but not a directory! {}".format(outdir))
-    else:
-        os.mkdir(outdir)
-
-    outname = utils.make_poly_name_json(ensemble, masterid, version)
-    outfile = os.path.join(outdir, outname)
-
-    store = {"ensemble": ensemble,
-             "masterid": masterid,
-             "lastmodified": time.asctime(),
-             "polygons": data['polygons'],
-             "revision": version}
-    with open(outfile, 'w') as fh:
-        fh.write(json.dumps(store))
-
-
-def save_component(userdir, data):
-    """Save the stack-level hull details.
-
-    Parameters
-    ----------
-    userdir : str
-        The location for the user-stored data.
-    data : dict
-        The JSON dictionary containing the elements to write out.
-    """
-
-    ensemble = data['ensemble']
-    version = data['revision']  # this is in string form, 0 padded
-    stack = data['stack']
-    component = data['component']
-
-    outdir = os.path.join(userdir, ensemble)
-    if os.path.exists(outdir):
-        if not os.path.isdir(outdir):
-            raise IOError("Exists but not a directory! {}".format(outdir))
-    else:
-        os.mkdir(outdir)
-
-    outname = utils.make_component_name_json(ensemble,
-                                             stack,
-                                             component,
-                                             version)
-    outfile = os.path.join(outdir, outname)
-
-    # For now we do not copy over the other fields (that should be
-    # read only) that are in the "original" version of this file
-    # (such as likelihood, band, mrg3rev).
-    #
-    store = {"ensemble": ensemble,
-             "stack": stack,
-             "component": component,
-             "lastmodified": time.asctime(),
-             "revision": version,
-             # DO WE NEED TO GET THE USER SETTING?
-             "master_id": data['master_id'],
-             "include_in_centroid": data['include_in_centroid']
-             }
-    with open(outfile, 'w') as fh:
-        fh.write(json.dumps(store))
-
-
 def apply_template(env, tmplname, args):
 
     try:
         tmpl = env.get_template(tmplname)
     except TemplateNotFound as exc:
-        errlog("No template for " + tmplname)
+        utils.errlog("No template for " + tmplname)
         out = "<!DOCTYPE html><html><head><title>ERROR</title>"
         out += "</head><body><p>Unable to find template:"
         out += "<strong>{}</strong>\n".format(tmplname)
@@ -1196,7 +543,7 @@ def create_master_hull_page(env,
     mid = "{:03d}".format(masterid)
     revstr = "{:03d}".format(revision)
 
-    state = read_ensemble_json(datadir, userdir, ensemble)
+    state = utils.read_ensemble_json(datadir, userdir, ensemble)
     if state is None:
         out = "<!DOCTYPE html><html><head><title>ERROR</title>"
         out += "</head><body><p>There was an error when processing "
@@ -1221,7 +568,7 @@ def create_master_hull_page(env,
         return 404, out
 
     elif len(hulls) > 1:
-        log("hulls = {}".format(hulls))
+        utils.log("hulls = {}".format(hulls))
         out = "<!DOCTYPE html><html><head><title>INTERNAL ERROR</title>"
         out += "</head><body><p>FOUND MULTIPLE COPIES - see Doug!</p></body></html>"
         return 404, out
@@ -1236,7 +583,7 @@ def create_master_hull_page(env,
     #
     dname = os.path.join(rawdir, ensemble)
     if not os.path.isdir(dname):
-        errlog("missing rawdir {}".format(dname))
+        utils.errlog("missing rawdir {}".format(dname))
         out = "<!DOCTYPE html><html><head><title>INTERNAL ERROR</title>"
         out += "</head><body><p>Missing dir={}".format(dname)
         out += "- see Doug!</p></body></html>"
@@ -1245,7 +592,7 @@ def create_master_hull_page(env,
     hullfile = os.path.join(dname,
                             utils.make_mhull_name(ensemble, revision))
     if not os.path.isfile(hullfile):
-        errlog("missing hullfile {}".format(hullfile))
+        utils.errlog("missing hullfile {}".format(hullfile))
         out = "<!DOCTYPE html><html><head><title>INTERNAL ERROR</title>"
         out += "</head><body><p>Missing hullfile={}".format(hullfile)
         out += "- see Doug!</p></body></html>"
@@ -1269,7 +616,7 @@ def create_master_hull_page(env,
     try:
         ds = pycrates.CrateDataset(hullfile, mode='r')
     except IOError as exc:
-        errlog("unable to read hullfile {} - {}".format(hullfile, exc))
+        utils.errlog("unable to read hullfile {} - {}".format(hullfile, exc))
         out = "<!DOCTYPE html><html><head><title>INTERNAL ERROR</title>"
         out += "</head><body><p>Error reading "
         out += "hullfile={}\nreason=\n{}".format(hullfile, exc)
@@ -1279,8 +626,8 @@ def create_master_hull_page(env,
     try:
         cr = ds.get_crate('HULLMATCH')
     except IndexError as exc:
-        errlog("unable to read HULLMATCH from " +
-               "hullfile {} - {}".format(hullfile, exc))
+        utils.errlog("unable to read HULLMATCH from " +
+                     "hullfile {} - {}".format(hullfile, exc))
         out = "<!DOCTYPE html><html><head><title>INTERNAL ERROR</title>"
         out += "</head><body><p>Error reading HULLMATCH block of "
         out += "hullfile={}\nreason=\n{}".format(hullfile, exc)
@@ -1291,7 +638,8 @@ def create_master_hull_page(env,
     #
     nstks = cr.get_key_value('STKIDNUM')
     if nstks is None:
-        errlog("missing STKIDNUM keyword in hullfile {} - {}".format(hullfile))
+        utils.errlog("missing STKIDNUM keyword in hullfile " +
+                     "{}".format(hullfile))
         out = "<!DOCTYPE html><html><head><title>INTERNAL ERROR</title>"
         out += "</head><body><p>No STKIDNUM keyword in "
         out += "hullfile={}\n".format(hullfile)
@@ -1303,7 +651,8 @@ def create_master_hull_page(env,
         key = "STKID{:03d}".format(i)
         val = cr.get_key_value(key)
         if val is None:
-            errlog("missing {} keyword in hullfile {} - {}".format(key, hullfile))
+            utils.errlog("missing {} keyword in ".format(key) +
+                         "hullfile {}".format(hullfile))
             out = "<!DOCTYPE html><html><head><title>INTERNAL ERROR</title>"
             out += "</head><body><p>No {} keyword in ".format(key)
             out += "hullfile={}\n".format(hullfile)
@@ -1346,7 +695,7 @@ def create_master_hull_page(env,
         elif stackid.startswith('hrcf'):
             detectors.add('hrc')
         else:
-            errlog("unexpected stackid={}".format(stackid))
+            utils.errlog("unexpected stackid={}".format(stackid))
             out = "<!DOCTYPE html><html><head><title>INTERNAL ERROR</title>"
             out += "</head><body><p>Unsupported stackid="
             out += "{}\n".format(stackid)
@@ -1395,8 +744,8 @@ def create_master_hull_page(env,
     try:
         cr = ds.get_crate('HULLLIST')
     except IndexError as exc:
-        errlog("unable to read HULLLIST from " +
-               "hullfile {} - {}".format(hullfile, exc))
+        utils.errlog("unable to read HULLLIST from " +
+                     "hullfile {} - {}".format(hullfile, exc))
         out = "<!DOCTYPE html><html><head><title>INTERNAL ERROR</title>"
         out += "</head><body><p>Error reading HULLLIST block of "
         out += "hullfile={}\nreason=\n{}".format(hullfile, exc)
@@ -1426,7 +775,7 @@ def create_master_hull_page(env,
                                   'qa.{:03d}.v{}.fits'.format(midval,
                                                               revstr))
             if not os.path.isfile(qafile):
-                errlog("missing qafile {}".format(qafile))
+                utils.errlog("missing qafile {}".format(qafile))
                 out = "<!DOCTYPE html><html><head><title>INTERNAL ERROR</title>"
                 out += "</head><body><p>Missing qafile={}".format(qafile)
                 out += "- see Doug!</p></body></html>"
@@ -1435,7 +784,7 @@ def create_master_hull_page(env,
             try:
                 qcr = pycrates.read_file(qafile + "[cols nvertex, eqpos]")
             except IOError as exc:
-                errlog("unable to read qafile {}".format(qafile))
+                utils.errlog("unable to read qafile {}".format(qafile))
                 out = "<!DOCTYPE html><html><head><title>INTERNAL ERROR</title>"
                 out += "</head><body><p>Unable to read "
                 out += "qafile={}\nerror=\n{}".format(qafile, exc)
@@ -1455,9 +804,9 @@ def create_master_hull_page(env,
         polyname = utils.make_poly_name_json(ensemble, midval, revstr)
         polyfile = os.path.join(userdir, ensemble, polyname)
         if os.path.exists(polyfile):
-            jcts = read_json(polyfile)
+            jcts = utils.read_json(polyfile)
             if jcts is None:
-                errlog("polyfile is unreadable: {}".format(polyfile))
+                utils.errlog("polyfile is unreadable: {}".format(polyfile))
         else:
             jcts = None
 
@@ -1514,7 +863,7 @@ def create_master_hull_page(env,
                                                             revstr))
         regstr = read_ds9_region(regfile)
         if regstr is None:
-            log("missing stack region file {}".format(regfile))
+            utils.log("missing stack region file {}".format(regfile))
             out = "<!DOCTYPE html><html><head><title>INTERNAL ERROR</title>"
             out += "</head><body><p>Unable to read stack "
             out += "regfile={}".format(regfile)
@@ -1561,7 +910,8 @@ def create_master_hull_page(env,
             shull['mancode'] = mancode_by_component[key]
         except KeyError:
             # this should not happen
-            log("key is missing in mancode_by_component: {}".format(key))
+            utils.log("key is missing in mancode_by_component: " +
+                      "{}".format(key))
             # pass
 
         store.append(shull)
@@ -1581,7 +931,7 @@ def create_master_hull_page(env,
         try:
             cr = pycrates.read_file(infile)
         except IOError:
-            errlog("Unable to open xmdat file: {}".format(infile))
+            utils.errlog("Unable to open xmdat file: {}".format(infile))
             continue
 
         # ra,dec in decmal degrees
@@ -1651,7 +1001,7 @@ def create_master_hull_page(env,
     # Do we know the actual size here?
     #
     if len(components) == 0:
-        log("filtered out all components!")
+        utils.log("filtered out all components!")
         out = "<!DOCTYPE html><html><head><title>INTERNAL ERROR</title>"
         out += "</head><body><p>Filtered out all components "
         out += "- see Doug!</p></body></html>"
@@ -1734,7 +1084,7 @@ def send_file(obj, infile, mimetype, headers=None):
     try:
         cts = open(infile, 'r').read()
     except IOError as exc:
-        log("error reading [{}]: {}".format(infile, exc))
+        utils.log("error reading [{}]: {}".format(infile, exc))
         # could send something more useful
         obj.send_error(404)
         return
@@ -1780,10 +1130,10 @@ def send_ensemble_hull_status(server,
     all rather muddled.
     """
 
-    ensemble_status = read_ensemble_status(datadir, userdir,
-                                           ensemble, revision)
-    cts = read_ensemble_hull_json(datadir, userdir,
-                                  ensemble, masterid, revision)
+    ensemble_status = utils.read_ensemble_status(datadir, userdir,
+                                                 ensemble, revision)
+    cts = utils.read_ensemble_hull_json(datadir, userdir,
+                                        ensemble, masterid, revision)
     if cts is None:
         server.send_error(404)
         return
@@ -1864,8 +1214,8 @@ class CHSHandler(BaseHTTPRequestHandler):
                     revision = int(toks[1])
                     masterid = int(toks[2])
                 except ValueError:
-                    errlog("Unable to parse revision/masterid " +
-                           "from [{}]".format(path))
+                    utils.errlog("Unable to parse revision/masterid " +
+                                 "from [{}]".format(path))
                     self.send_error(404)
                     return
 
@@ -1883,7 +1233,8 @@ class CHSHandler(BaseHTTPRequestHandler):
                 return
 
             else:
-                errlog("Invalid ensemble path [{}]".format(path))
+                utils.errlog("Invalid ensemble path " +
+                             "[{}]".format(path))
                 self.send_error(404)
 
         # Look in the webassets directory for this file
@@ -1900,22 +1251,23 @@ class CHSHandler(BaseHTTPRequestHandler):
             path = path[1:]
 
         try:
-            savefunc = {'save/summary': save_summary,
-                        'save/ensemble': save_ensemble,
-                        'save/master': save_master,
-                        'save/masterpoly': save_master_poly,
-                        'save/component': save_component,
-                        'save/datatable': save_datatable
+            savefunc = {'save/summary': utils.save_summary,
+                        'save/ensemble': utils.save_ensemble,
+                        'save/master': utils.save_master,
+                        'save/masterpoly': utils.save_master_poly,
+                        'save/component': utils.save_component,
+                        'save/datatable': utils.save_datatable
                         }[path]
         except KeyError:
-            errlog("Unexpected POST path={}".format(path))
+            utils.errlog("Unexpected POST path={}".format(path))
             self.send_error(404)
             return
 
         # for now require JSON
         ctype = self.headers['Content-Type'].split(';')
         if not ctype[0] == 'application/json':
-            errlog("Unexpected content-type: {}".format(ctype[0]))
+            utils.errlog("Unexpected content-type: " +
+                         "{}".format(ctype[0]))
             self.send_error(404)
             return
 
@@ -1924,7 +1276,7 @@ class CHSHandler(BaseHTTPRequestHandler):
         try:
             jcts = json.loads(data)
         except Exception as exc:
-            errlog("Invalid JSON: {}".format(exc))
+            utils.errlog("Invalid JSON: {}".format(exc))
             self.send_error(404)
             return
 
@@ -1934,7 +1286,7 @@ class CHSHandler(BaseHTTPRequestHandler):
         try:
             savefunc(userdir, jcts)
         except Exception as exc:
-            errlog("Unable to save data: {}".format(exc))
+            utils.errlog("Unable to save data: {}".format(exc))
             self.send_error(404)
             return
 
@@ -1947,7 +1299,7 @@ class CHSHandler(BaseHTTPRequestHandler):
         try:
             rval = json.dumps(cts)
         except Exception as exc:
-            errlog("error converting JSON: {}".format(exc))
+            utils.errlog("error converting JSON: {}".format(exc))
             self._set_headers(404)
             self.wfile.write("<html><body><h1>ERROR</h1>")
             self.wfile.write("<p>Unable to convert data to JSON.</p>")
@@ -1994,7 +1346,7 @@ class CHSHandler(BaseHTTPRequestHandler):
             return
 
         if ntoks == 1:
-            cts = read_ensemble_json(datadir, userdir, ensemble)
+            cts = utils.read_ensemble_json(datadir, userdir, ensemble)
             self.send_as_json(cts)
             return
 
@@ -2008,7 +1360,7 @@ class CHSHandler(BaseHTTPRequestHandler):
         try:
             masterid = int(toks[2])
         except ValueError:
-            errlog("Invalid master id: {}".format(toks[2]))
+            utils.errlog("Invalid master id: {}".format(toks[2]))
             self.send_error(404)
             return
 
@@ -2063,7 +1415,7 @@ class CHSHandler(BaseHTTPRequestHandler):
 
         mimetype = get_mimetype(infile)
         if mimetype is None:
-            errlog("unknown JS9 suffix [{}]".format(infile))
+            utils.errlog("unknown JS9 suffix [{}]".format(infile))
             self.send_error(404)
             return
 
@@ -2086,14 +1438,14 @@ class CHSHandler(BaseHTTPRequestHandler):
                            "{}*fits*".format(stack))
         matches = glob.glob(pat)
         if len(matches) == 0:
-            errlog("failed glob={}".format(pat))
+            utils.errlog("failed glob={}".format(pat))
             self.send_error(404)
             return
 
         # Should pick the highest version; for now pick the first
         #
         if len(matches) > 1:
-            log("Multiple matches for {}".format(pat))
+            utils.log("Multiple matches for {}".format(pat))
 
         infile = matches[0]
 
@@ -2101,8 +1453,8 @@ class CHSHandler(BaseHTTPRequestHandler):
             try:
                 cts = open(infile, 'r').read()
             except IOError as exc:
-                errlog("error reading [{}]: ".format(infile) +
-                       "{}".format(exc))
+                utils.errlog("error reading [{}]: ".format(infile) +
+                             "{}".format(exc))
 
                 # could send something more useful as a response?
                 self.send_error(404)
@@ -2152,8 +1504,8 @@ def serve(userdir, webdir, datadir, templatedir,
 
     server_address = ('', port)
     httpd = CHSServer(store, server_address, CHSHandler)
-    log("Web assets: {}".format(webdir))
-    log("Starting server on http://localhost:{}/".format(port))
+    utils.log("Web assets: {}".format(webdir))
+    utils.log("Starting server on http://localhost:{}/".format(port))
     httpd.serve_forever()
 
 
