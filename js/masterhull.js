@@ -444,13 +444,30 @@ function redrawMasterHulls(display, stack, cptnum) {
   }
 }
 
+/*
+ * There is an implicit assumption that we only have
+ *   a) one JS9 for a stack at a single time
+ *   b) this is not closed and a new one re-opened
+ *
+ * Both are not true (could try enforcing the first, but not the
+ * second).
+ *
+ * For now going to allow values to be over-ridden, which should
+ * be okay for case b; need to test for case a. A simple test
+ * suggests it is okay for case a, but not completely convinced.
+ */
 function addMasterHulls(display, stack, cptnum, is_qa) {
 
   const key = toKey(stack, cptnum);
+  /*
+   * see commentary above
+   *
   if ((key in masterhulls_ids.convex) || (key in masterhulls_ids.master)) {
     alert("Internal error: key=" + key + " is already in masterhulls_ids");
   }
-  
+   *
+   */
+
   // Note: the tagName gets over-written later, so should change this.
   const tagName = 'master';
   const hullOpts = makeMasterOpts(tagName, is_qa);
@@ -1094,13 +1111,15 @@ function saveUserContent() {
 		 useraction: "",
 		 usernotes: newval};
 
-  // You should only be able to save concent if this is the
+  // You should only be able to save content if this is the
   // latest version, so choice should always be set here.
   //
   const choice = document.getElementById('choice');
   if (choice !== null) {
       store.useraction = choice.value;
   }
+  // TODO: review why sending in "usernotes"/newval, as not used
+  //       by saveUser
   saveUser(store, "usernotes", newval);
 }
 
@@ -1206,7 +1225,8 @@ function toggleComponent() {
 
   // two tables to toggle
   for (let elname of ['cptinfotable', 'cptchoicetable']) {
-    document.getElementById(elname).style.display = style;
+      const el = document.getElementById(elname);
+      if (el !== null) { el.style.display = style; }
   }
 
   cptShown = !cptShown;
