@@ -218,7 +218,9 @@ def create_review_products(chsfile, outdir,
                        'key': stkhull['key'],
                        'ensemble': ensemble,
                        'revision': revstr,
-                       'master_id': stkhull['master_id'],
+                       # Note: need an array for master ids (in case
+                       #       of ambiguous links)
+                       'master_id': [stkhull['master_id']],
                        'likelihood': stkhull['likelihood'],
                        'eband': stkhull['eband'],
                        'mrg3rev': stkhull['mrg3rev'],
