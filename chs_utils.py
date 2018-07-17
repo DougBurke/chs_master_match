@@ -93,6 +93,23 @@ def logonce(msg):
     _logonce.add(msg)
 
 
+def touch_file(filename):
+    """Morally similar to the touch command.
+
+    Based on https://stackoverflow.com/a/1160227 since I am
+    still supporting Python 2.7 and do not want to add another
+    OTS package ('pip install pathlib').
+
+    Parameters
+    ----------
+    filename : str
+        The path to the file to "touch".
+    """
+
+    with open(filename, 'a'):
+        os.utime(filename, None)
+
+
 def find_single_match(pat):
     """Return the file name matching the pattern.
 
@@ -172,6 +189,24 @@ def find_stkevt3(stack, evt3dir):
     return find_single_match(pat)
 
 
+def make_terminal_name(ensemble):
+    """The file name used to indicate that the ensemble is complete.
+
+    Parameters
+    ----------
+    ensemble : str
+        The ensemble name.
+
+    Returns
+    -------
+    filename : str
+        The file name (no path is included).
+
+    """
+
+    return "COMPLETED.{}".format(ensemble)
+
+
 def make_mhull_name(ensemble, revision=None):
     """What is the name of the master hull file?
 
@@ -200,6 +235,10 @@ def make_mhull_name(ensemble, revision=None):
 
 def find_mhulls(indir, ensemble):
     """Return mhull files for this ensemble, indexed by CHSVER.
+
+    Note that the input directory is not the usual "datadir" path
+    as it includes the ensemble name (for the standard data
+    arrangement).
 
     Parameters
     ----------
@@ -264,7 +303,7 @@ def make_hull_name_json(ensemble, masterid, revision):
     ----------
     ensemble : str
         The ensemble name.
-    masterid : int
+    masterid : int or None.
         The master id value.
     revision : int
         The revision number.
@@ -272,15 +311,21 @@ def make_hull_name_json(ensemble, masterid, revision):
     Returns
     -------
     filename : str
-        The name of the JSON file (with no path).
+        The name of the JSON file (with no path). If masterid
+        is None then a wild card is used.
     """
 
     # assert isinstance(revision, six.string_types)
     revision = int(revision)
 
-    return 'hull.{}.{:03d}.v{:03d}.json'.format(ensemble,
-                                                masterid,
-                                                revision)
+    if masterid is None:
+        mstr = "*"
+    else:
+        mstr = "{:03d}".format(masterid)
+
+    return 'hull.{}.{}.v{:03d}.json'.format(ensemble,
+                                            mstr,
+                                            revision)
 
 
 def make_poly_name_json(ensemble, masterid, revision):
@@ -962,6 +1007,9 @@ def setup_user_setting(store, key, stringval=True):
     -----
     If the key does not exist in the input store then it its "proposed"
     value is set to '' (stringval is True) or None (otherwise).
+
+    TODO: validate that setting value to '' is actually what we want,
+    since there is some JSON code that expects it to be None/null.
     """
 
     try:
@@ -979,6 +1027,49 @@ def setup_user_setting(store, key, stringval=True):
 
     store[key] = {'proposed': v, 'user': None}
     return True
+
+
+def get_user_setting(store, key):
+    """Return the setting for this key.
+
+    This is a key that has been through the setup_user_setting
+    routine, so has a 'proposed' and 'user' variant. The
+    'user' setting is returned unless it is None or '', in which
+    case the 'proposed' setting is used.
+
+    Parameters
+    ----------
+    store : dict
+        A dictionary which is assumed to contain the supplied key.
+    key : dict_key
+        The key value.
+
+    Returns
+    -------
+    value
+        The value for this key.
+
+    """
+
+    try:
+        v = store[key]
+    except KeyError:
+        raise KeyError("Store does not contain key={}".format(key))
+
+    # Always extract both as a check it is a user-settable value.
+    # Do not bother trying to make a "user friendly" error message.
+    #
+    proposed = v['proposed']
+    user = v['user']
+
+    if user is not None and user != '':
+        return user
+
+    if proposed is None or proposed == '':
+        raise ValueError("Unexpected user/proposed values for " +
+                         "key={} in store=\n{}".format(key, store))
+
+    return proposed
 
 
 def read_ensemble_hull_json(datadir, userdir,
@@ -1015,7 +1106,8 @@ def read_ensemble_hull_json(datadir, userdir,
 
     # Setup for user information.
     #
-    for key in ['usernotes', 'useraction', 'lastmodified']:
+    userkeys = ['usernotes', 'useraction', 'lastmodified']
+    for key in userkeys:
         if not setup_user_setting(jcts, key):
             return None
 
@@ -1032,7 +1124,7 @@ def read_ensemble_hull_json(datadir, userdir,
     if ucts is None:
         return jcts
 
-    for key in ['usernotes', 'useraction', 'lastmodified']:
+    for key in userkeys:
         if key in ucts:
             jcts[key]['user'] = ucts[key]
 
@@ -1194,7 +1286,6 @@ def read_ensemble_status(datadir, userdir, ensemble, revision):
 
     What is the current status of the ensemble? This is based on
     read_ensemble_json.
-
 
     Parameters
     ----------
@@ -1510,3 +1601,81 @@ def save_component(userdir, data):
              }
     with open(outfile, 'w') as fh:
         fh.write(json.dumps(store))
+
+
+# Crates helpers
+
+def add_header(cr, hdrvals):
+    """Add the header keywords to the crate.
+
+    Parameters
+    ----------
+    cr : pycrates.Crate
+    hdrvals : sequence of (name, value, desc) triples
+    """
+
+    for name, value, desc in hdrvals:
+        key = pycrates.CrateKey()
+        key.name = name
+        key.value = value
+        key.desc = desc
+        cr.add_key(key)
+
+
+# Should send in the time value
+_header = {}
+
+
+def add_standard_header(cr, creator=None, revision=1):
+    """Add standard header keywords.
+
+    The DATE value is set the first time that this routine is called,
+    whatever file is being created. This may or may not be
+    rather silly.
+    """
+
+    if 'timestr' not in _header:
+        _header['timestr'] = time.strftime("%Y-%m-%dT%H:%M:%S")
+
+    timestr = _header['timestr']
+
+    hdrvals = []
+    if creator is not None:
+        hdrvals.append(('CREATOR', creator,
+                        'tool that created this output'))
+
+    hdrvals.extend([('DATE', timestr,
+                     'Date and time of file creation'),
+                    ('CHSVER', revision,
+                     'The revision number for the file')
+                    ])
+
+    add_header(cr, hdrvals)
+
+
+def add_col(cr, name, values,
+            desc=None,
+            unit=None):
+    """Add a column to the crate.
+
+    Parameters
+    ----------
+    cr : pycrates.TABLECrate
+    name : str
+    values : array_like
+    desc : str or None, optional
+        The description.
+    unit : str or None, optional
+        The units for the column.
+
+    """
+
+    col = pycrates.CrateData()
+    col.name = name
+    col.values = values
+    if desc is not None:
+        col.desc = desc
+    if unit is not None:
+        col.unit = unit
+
+    cr.add_column(col)

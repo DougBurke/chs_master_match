@@ -265,76 +265,6 @@ def no_hulls(outdir):
     open(outfile, 'a').close()
 
 
-# Should send in the time value
-_header = {}
-
-
-def add_standard_header(cr, creator=None, revision=1):
-
-    if 'timestr' not in _header:
-        _header['timestr'] = time.strftime("%Y-%m-%dT%H:%M:%S")
-
-    timestr = _header['timestr']
-
-    hdrvals = []
-    if creator is not None:
-        hdrvals.append(('CREATOR', creator,
-                        'tool that created this output'))
-
-    hdrvals.extend([('DATE', timestr,
-                     'Date and time of file creation'),
-                    ('CHSVER', revision,
-                     'The revision number for the file')
-                    ])
-
-    add_header(cr, hdrvals)
-
-
-def add_header(cr, hdrvals):
-    """Add the header keywords to the crate.
-
-    Parameters
-    ----------
-    cr : pycrates.Crate
-    hdrvals : sequence of (name, value, desc) triples
-    """
-
-    for name, value, desc in hdrvals:
-        key = pycrates.CrateKey()
-        key.name = name
-        key.value = value
-        key.desc = desc
-        cr.add_key(key)
-
-
-def add_col(cr, name, values,
-            desc=None,
-            unit=None):
-    """Add a column to the crate.
-
-    Parameters
-    ----------
-    cr : pycrates.TABLECrate
-    name : str
-    values : array_like
-    desc : str or None, optional
-        The description.
-    unit : str or None, optional
-        The units for the column.
-
-    """
-
-    col = pycrates.CrateData()
-    col.name = name
-    col.values = values
-    if desc is not None:
-        col.desc = desc
-    if unit is not None:
-        col.unit = unit
-
-    cr.add_column(col)
-
-
 def write_hulls(ensemble, outfile, hullcpts, hullareas, outlines,
                 hull_store,
                 svdqafile=None,
@@ -434,8 +364,8 @@ def write_hulls(ensemble, outfile, hullcpts, hullareas, outlines,
     cr = pycrates.TABLECrate()
     cr.name = 'HULLMATCH'
 
-    add_standard_header(cr, creator=creator, revision=revision)
-    add_header(cr, extra_hdr)
+    utils.add_standard_header(cr, creator=creator, revision=revision)
+    utils.add_header(cr, extra_hdr)
 
     # What data do we want to store?
     mid = []
@@ -489,39 +419,39 @@ def write_hulls(ensemble, outfile, hullcpts, hullareas, outlines,
     #       but it can be useful to know how many stack-level
     #       hulls there are in a master when looking at this data.
     #
-    add_col(cr, 'Master_Id', mid,
-            desc='This is an internal number, do not expose')
-    add_col(cr, 'NHULLS', nhulls,
-            desc='The number of stack-level hulls in the master')
-    add_col(cr, 'STACKID', stks)
-    add_col(cr, 'COMPONENT', cpts,
-            desc='Offset by COMPZERO from MEXTSRC component value')
-    add_col(cr, 'Match_Type', mtypes)
-    add_col(cr, 'AREA', areas,
-            unit='arcsec**2',
-            desc='Area of hull excluding pixel-mask filter')
-    add_col(cr, 'EBAND', ebands,
-            desc='Energy band of hull')
-    add_col(cr, 'LIKELIHOOD', lhoods,
-            desc='Likelihood of hull')
-    add_col(cr, 'MAN_CODE', mancodes,
-            desc='Copied from MEXTSRC block (converted to int)')
-    add_col(cr, 'MRG3REV', revnums,
-            desc='Revision of mrgsrc3 file used')
-    add_col(cr, 'INCLUDE_IN_CENTROID', incl_centroids,
-            desc='Use hull in centroid calculation?')
+    utils.add_col(cr, 'Master_Id', mid,
+                  desc='This is an internal number, do not expose')
+    utils.add_col(cr, 'NHULLS', nhulls,
+                  desc='The number of stack-level hulls in the master')
+    utils.add_col(cr, 'STACKID', stks)
+    utils.add_col(cr, 'COMPONENT', cpts,
+                  desc='Offset by COMPZERO from MEXTSRC component value')
+    utils.add_col(cr, 'Match_Type', mtypes)
+    utils.add_col(cr, 'AREA', areas,
+                  unit='arcsec**2',
+                  desc='Area of hull excluding pixel-mask filter')
+    utils.add_col(cr, 'EBAND', ebands,
+                  desc='Energy band of hull')
+    utils.add_col(cr, 'LIKELIHOOD', lhoods,
+                  desc='Likelihood of hull')
+    utils.add_col(cr, 'MAN_CODE', mancodes,
+                  desc='Copied from MEXTSRC block (converted to int)')
+    utils.add_col(cr, 'MRG3REV', revnums,
+                  desc='Revision of mrgsrc3 file used')
+    utils.add_col(cr, 'INCLUDE_IN_CENTROID', incl_centroids,
+                  desc='Use hull in centroid calculation?')
 
     if svdqas is not None:
-        add_col(cr, 'STKSVDQA', stksvdqas,
-                desc='Did this stack go to SVD QA?')
+        utils.add_col(cr, 'STKSVDQA', stksvdqas,
+                      desc='Did this stack go to SVD QA?')
 
     ds.add_crate(cr)
 
     cr = pycrates.TABLECrate()
     cr.name = 'HULLLIST'
 
-    add_standard_header(cr, creator=creator, revision=revision)
-    add_header(cr, extra_hdr)
+    utils.add_standard_header(cr, creator=creator, revision=revision)
+    utils.add_header(cr, extra_hdr)
 
     # What is the maximum number of points in a hull?
     #
@@ -593,23 +523,23 @@ def write_hulls(ensemble, outfile, hullcpts, hullareas, outlines,
             nvertex.append(npts)
             eqpos[i, :, :npts] = vs
 
-    add_col(cr, 'Master_Id', mid,
-            desc='This is an internal number, do not expose')
-    add_col(cr, 'STATUS', status,
-            desc='Did the master-match work?')
-    add_col(cr, 'BASE_STK', base_stack,
-            desc='The stack used for SKY coord system, or NONE')
+    utils.add_col(cr, 'Master_Id', mid,
+                  desc='This is an internal number, do not expose')
+    utils.add_col(cr, 'STATUS', status,
+                  desc='Did the master-match work?')
+    utils.add_col(cr, 'BASE_STK', base_stack,
+                  desc='The stack used for SKY coord system, or NONE')
 
-    add_col(cr, 'MANMATCH', man_match,
-            desc='Has the selection of stack-level hulls been changed')
-    add_col(cr, 'MANREG', man_reg,
-            desc='Has the region been changed manually')
+    utils.add_col(cr, 'MANMATCH', man_match,
+                  desc='Has the selection of stack-level hulls been changed')
+    utils.add_col(cr, 'MANREG', man_reg,
+                  desc='Has the region been changed manually')
 
-    add_col(cr, 'NVERTEX', nvertex,
-            desc='The number of vertexes in the closed hull')
+    utils.add_col(cr, 'NVERTEX', nvertex,
+                  desc='The number of vertexes in the closed hull')
 
-    add_col(cr, 'NSTKHULL', nstkhull,
-            desc='The number of stack hulls that were combined')
+    utils.add_col(cr, 'NSTKHULL', nstkhull,
+                  desc='The number of stack hulls that were combined')
 
     # NOTE: there is no POS coordinate column in this block
     col = pycrates.create_vector_column('EQPOS', ['RA', 'DEC'])
@@ -679,13 +609,13 @@ def dump_qa(ensemble, outdir, ctr, outline,
     cr = pycrates.TABLECrate()
     cr.name = 'QACASE'
 
-    add_standard_header(cr, creator=creator, revision=revision)
-    add_header(cr, [('ENSEMBLE', ensemble,
-                     'The ensemble'),
-                    ('HULLCPT', ctr,
-                     'The Master_Id of the hull'),
-                    ('QREASON', reason,
-                     'Why is this a QA case?')])
+    utils.add_standard_header(cr, creator=creator, revision=revision)
+    utils.add_header(cr, [('ENSEMBLE', ensemble,
+                           'The ensemble'),
+                          ('HULLCPT', ctr,
+                           'The Master_Id of the hull'),
+                          ('QREASON', reason,
+                           'Why is this a QA case?')])
 
     eqpos = outline['eqpos']
     pos = outline['pos']
@@ -693,10 +623,10 @@ def dump_qa(ensemble, outdir, ctr, outline,
 
     ncpts = len(pos)
 
-    add_col(cr, 'COMPONENT', np.arange(1, ncpts + 1))
-    add_col(cr, 'SHAPE', ['Polygon'] * ncpts)
-    add_col(cr, 'BASE_STK', [outline['base_stack']] * ncpts,
-            desc='The stack used for SKY coord system, or NONE')
+    utils.add_col(cr, 'COMPONENT', np.arange(1, ncpts + 1))
+    utils.add_col(cr, 'SHAPE', ['Polygon'] * ncpts)
+    utils.add_col(cr, 'BASE_STK', [outline['base_stack']] * ncpts,
+                  desc='The stack used for SKY coord system, or NONE')
 
     nvertex = []
     for poly in pos:
@@ -707,8 +637,8 @@ def dump_qa(ensemble, outdir, ctr, outline,
         assert (xidx == yidx).all()
         nvertex.append(xidx.sum())
 
-    add_col(cr, 'NVERTEX', nvertex,
-            desc='The number of vertexes in the closed hull')
+    utils.add_col(cr, 'NVERTEX', nvertex,
+                  desc='The number of vertexes in the closed hull')
 
     nmax = max(nvertex)
     pos_out = np.full((ncpts, 2, nmax), np.nan, dtype=np.float64)
