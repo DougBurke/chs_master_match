@@ -254,6 +254,11 @@ def find_mhulls(indir, ensemble):
         list is sorted so that the versions are in numerical order
         (increasing); i.e. ans[0][0] = 1, ans[-1] is the latest
         version.
+
+    See Also
+    --------
+    find_field_jsons, make_mhull_name
+
     """
 
     pat = os.path.join(indir,
@@ -270,19 +275,79 @@ def find_mhulls(indir, ensemble):
 
         vers.append(int(ver))
 
-    return sorted(list(zip(vers, matches)),
-                  key=lambda x: x[0])
+    nver = len(vers)
+    ncheck = len(set(vers))
+    if nver != ncheck:
+        raise IOError("Versions not unique: {}".format(vers))
+
+    out = sorted(list(zip(vers, matches)), key=lambda x: x[0])
+    return out
 
 
-def make_field_name_json(ensemble, revision):
+def find_field_jsons(indir, ensemble):
+    """Return JSON field files for this ensemble, indexed by CHSVER.
+
+    Note that the input directory is not the usual "userdir" path
+    as it includes the ensemble name.
+
+    Parameters
+    ----------
+    indir : str
+        The path to an ensemble directory, containing JSON files
+        for the given ensemble created by the server.
+
+    Returns
+    -------
+    ans : [(int, str)]
+        The version (CHSVER) and file name for all the field JSON
+        files for this ensemble. There must be at least 1. The return
+        list is sorted so that the versions are in numerical order
+        (increasing); i.e. ans[0][0] = 1, ans[-1] is the latest
+        version.
+
+    See Also
+    --------
+    find_mhulls, make_field_name_json
+
+    Notes
+    -----
+    At present this is unused.
+
+    """
+
+    pat = os.path.join(indir,
+                       make_field_name_json(ensemble))
+    matches = glob.glob(pat)
+    if len(matches) == 0:
+        raise IOError("No mhull file found matching {}".format(pat))
+
+    vers = []
+    for match in matches:
+
+        jcts = read_json(match)
+        ver = int(jcts['revision'])
+        vers.append(int(ver))
+
+    nver = len(vers)
+    ncheck = len(set(vers))
+    if nver != ncheck:
+        raise IOError("Versions not unique: {}".format(vers))
+
+    out = sorted(list(zip(vers, matches)), key=lambda x: x[0])
+    return out
+
+
+def make_field_name_json(ensemble, revision=None):
     """What is the JSON file storing the field data?
+
+    If the revision is not given then a wild card is added ("*").
 
     Parameters
     ----------
     ensemble : str
         The ensemble name.
-    revision : int
-        The revision number.
+    revision : int or None, optional
+        The revision number (if known)
 
     Returns
     -------
@@ -290,10 +355,12 @@ def make_field_name_json(ensemble, revision):
         The name of the JSON file (with no path).
     """
 
-    # assert isinstance(revision, six.string_types)
-    revision = int(revision)
+    if revision is None:
+        revstr = "*"
+    else:
+        revstr = "{:03d}".format(int(revision))
 
-    return 'field.{}.v{:03d}.json'.format(ensemble, revision)
+    return 'field.{}.v{}.json'.format(ensemble, revstr)
 
 
 def make_hull_name_json(ensemble, masterid, revision):
@@ -797,16 +864,21 @@ def read_master_hulls(chsfile, mrgsrc3dir):
 
     # Map from stack id to the "number" of the stack in the ensemble
     ensemblemap = {}
+    stacklist = []
     for i in range(cr.get_key_value('STKIDNUM')):
         key = 'STKID{:03d}'.format(i)
         stkid = cr.get_key_value(key)
         assert stkid not in ensemblemap, stkid
+        stacklist.append(stkid)
         ensemblemap[stkid] = i
 
-    # Need to support old data during testing
     compzero = cr.get_key_value('COMPZERO')
-    if compzero is None:
-        compzero = 0
+    assert compzero is not None
+
+    svdqafile = cr.get_key_value('SVDQAFIL')
+    centroidfile = cr.get_key_value('CENFILE')
+    assert svdqafile is not None
+    assert centroidfile is not None
 
     # As the same stack can appear multiple times, store the
     # data from the mrgsrc3 files in a dictionary. The assumption
@@ -903,6 +975,9 @@ def read_master_hulls(chsfile, mrgsrc3dir):
 
     metadata = {'ensemble': cr.get_key_value('ENSEMBLE'),
                 'ensemblemap': ensemblemap,
+                'stacks': stacklist,
+                'svdqafile': svdqafile,
+                'centroidfile': centroidfile,
                 'revision': cr.get_key_value('CHSVER')}
 
     return hullmatch, hulllist, metadata
@@ -1679,3 +1754,217 @@ def add_col(cr, name, values,
         col.unit = unit
 
     cr.add_column(col)
+
+
+# Create the master hull file (mhull).
+#
+def read_svdqafile(infile):
+    """Returns the set of stacks that went to SVD QA.
+
+    Parameters
+    ----------
+    infile : str
+        The name of the file. The first column is used, and it
+        is assumed to be case-sensitive.
+
+    Returns
+    -------
+    stackids : set of str
+        The stacks that have been to SVD QA.
+
+    """
+
+    cr = pycrates.read_file(infile)
+    if cr.get_nrows() < 1:
+        raise IOError("No data read from: {}".format(infile))
+
+    # Explicit conversion to a Python string
+    return set([str(v) for v in cr.get_column(0).values])
+
+
+def read_centroidfile(infile):
+    """The set of stack-level hulls to exclude from centroid calculation.
+
+    The file is assumed to have columns "stack", "cpt", and
+    "use_cen". Only those with "use_cen" set to False are returned
+    here.
+
+    Parameters
+    ----------
+    infile : str
+        The name of the file.
+
+    Returns
+    -------
+    hulls : set of (stackid, component)
+        The stack-level hulls to exclude from centroid calculation.
+
+    Notes
+    -----
+    Although technically there could be a case where no stack-level
+    hulls are to be excluded, we know this is not the case here,
+    so an error is raised if no such rows are found (as a sanity
+    check).
+
+    """
+
+    cr = pycrates.read_file(infile)
+    if cr.get_nrows() < 1:
+        raise IOError("No data read from: {}".format(infile))
+
+    # do filtering here rather than with a DM filter as not 100%
+    # convinced this works correctly in CIAO 4.9 (there have been
+    # problems with string filtering).
+    #
+    out = set([])
+    for stack, cpt, flag in zip(cr.stack.values,
+                                cr.cpt.values,
+                                cr.use_cen.values):
+        if flag != "False":
+            continue
+
+        key = stack, cpt
+        out.add(key)
+
+    if len(out) == 0:
+        raise IOError("No excluded data found in {}".format(infile))
+
+    return out
+
+
+def create_mhull_file(ensemble, revision, outfile,
+                      hullmatch, hulllist, header,
+                      creator=None):
+    """Create the "CHS mst3" file.
+
+    Parameters
+    ----------
+    ensemble : string
+        The ensemble value, written to the header as the ENSEMBLE
+        keyword.
+    revision : int
+        The value to write out to the header as the CHSVER
+        keyword.
+    outfile : string
+        This file is overwritten if it exists.
+    hullmatch : dict
+        The contents of the HULLMATCH block. The keys are lower-case
+        versions of the column names. Note that COMPONENT does not
+        include the COMPZERO correction (i.e. this routine adds the
+        offset).
+    hulllist : dict
+        The contents of the HULLLIST block. The keys are lower-case
+        versions of the column names.
+    header : dict
+        Information used for the header (and perhaps for columns too).
+        Keys are: svdqa, centroid, stacks, compzero. svdqa and centroid
+        contain the full path to the files used for the STKSVDQA and
+        INCLUDE_IN_CENTROID columns. stacks is a list of the stacks
+        that form the ensemble, and to be written out as STKIDxxx
+        values (in input order).
+        compzero is expected to be 0 (it is added to the COMPONENT
+        values for hullmatch)
+    creator : None or str, optional
+        The name to use for the CREATOR field in the header.
+    """
+
+    # Extract header info
+    #
+    extra_hdr = [('ENSEMBLE', ensemble, 'The ensemble'),
+                 ('COMPZERO', header['compzero'],
+                  'The COMPONENT value for cpt=0'),
+                 ('SVDQAFIL', header['svdqafile'],
+                  'The stacks that went to SVD QA'),
+                 ('CENFILE', header['centroidfile'],
+                  'centroid input')]
+
+    for i, stack in enumerate(header['stacks']):
+        extra_hdr.append(('STKID{:03d}'.format(i),
+                          stack,
+                          'Member of the ensemble'))
+
+    extra_hdr.append(('STKIDNUM', len(header['stacks']),
+                      'Number of stacks in ensemble'))
+
+    ds = pycrates.CrateDataset()
+
+    cr = pycrates.TABLECrate()
+    cr.name = 'HULLMATCH'
+
+    add_standard_header(cr, creator=creator, revision=revision)
+    add_header(cr, extra_hdr)
+
+    # NOTE: the NHULLS column might be better in the next block,
+    #       but it can be useful to know how many stack-level
+    #       hulls there are in a master when looking at this data.
+    #
+    add_col(cr, 'Master_Id', hullmatch['master_id'],
+            desc='This is an internal number, do not expose')
+    add_col(cr, 'NHULLS', hullmatch['nhulls'],
+            desc='The number of stack-level hulls in the master')
+    add_col(cr, 'STACKID', hullmatch['stackid'])
+
+    cpts = []
+    for cpt in hullmatch['component']:
+        cpts.append(cpt + header['compzero'])
+
+    add_col(cr, 'COMPONENT', cpts,
+            desc='Offset by COMPZERO from MEXTSRC component value')
+
+    add_col(cr, 'Match_Type', hullmatch['match_type'])
+    add_col(cr, 'AREA', hullmatch['area'],
+            unit='arcsec**2',
+            desc='Area of hull excluding pixel-mask filter')
+    add_col(cr, 'EBAND', hullmatch['eband'],
+            desc='Energy band of hull')
+    add_col(cr, 'LIKELIHOOD', hullmatch['likelihood'],
+            desc='Likelihood of hull')
+    add_col(cr, 'MAN_CODE', hullmatch['man_code'],
+            desc='Copied from MEXTSRC block (converted to int)')
+    add_col(cr, 'MRG3REV', hullmatch['mrg3rev'],
+            desc='Revision of mrgsrc3 file used')
+    add_col(cr, 'INCLUDE_IN_CENTROID',
+            hullmatch['include_in_centroid'],
+            desc='Use hull in centroid calculation?')
+    add_col(cr, 'STKSVDQA', hullmatch['stksvdqa'],
+            desc='Did this stack go to SVD QA?')
+
+    ds.add_crate(cr)
+
+    cr = pycrates.TABLECrate()
+    cr.name = 'HULLLIST'
+
+    add_standard_header(cr, creator=creator, revision=revision)
+    add_header(cr, extra_hdr)
+
+    add_col(cr, 'Master_Id', hulllist['master_id'],
+            desc='This is an internal number, do not expose')
+    add_col(cr, 'STATUS', hulllist['status'],
+            desc='Did the master-match work?')
+    add_col(cr, 'BASE_STK', hulllist['base_stk'],
+            desc='The stack used for SKY coord system, or NONE')
+
+    add_col(cr, 'MANMATCH', hulllist['manmatch'],
+            desc='Has the selection of stack-level hulls been changed')
+    add_col(cr, 'MANREG', hulllist['manreg'],
+            desc='Has the region been changed manually')
+
+    add_col(cr, 'NVERTEX', hulllist['nvertex'],
+            desc='The number of vertexes in the closed hull')
+
+    add_col(cr, 'NSTKHULL', hulllist['nstkhull'],
+            desc='The number of stack hulls that were combined')
+
+    # NOTE: there is no POS coordinate column in this block
+    #       (so can not attach a transform to it)
+    col = pycrates.create_vector_column('EQPOS', ['RA', 'DEC'])
+    col.desc = 'The master hull vertices'
+    col.unit = 'degree'
+    col.values = hulllist['eqpos']
+    cr.add_column(col)
+
+    ds.add_crate(cr)
+
+    # ds.write(outfile, clobber=True)
+    ds.write(outfile, clobber=False)
+    print("Created: {}".format(outfile))
