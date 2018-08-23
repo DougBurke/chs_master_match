@@ -49,6 +49,12 @@ td.undecided {
   background-color: orange;
 }
 
+div#infobar div#final {
+  background: rgba(255, 159, 0, 0.6);
+  border-width: 3px;
+  padding: 0.5em 0;
+}
+
 #final {
   text-align: center;
 }

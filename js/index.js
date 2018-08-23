@@ -22,6 +22,7 @@ function add_ensemble_row(parent, ens) {
   let td = document.createElement("td");
   const a = document.createElement("a");
   a.href = ens.name;
+  a.target = "_blank";
   a.innerHTML = ens.name;
   td.appendChild(a);
   tr.appendChild(td);
