@@ -22,6 +22,26 @@ import region
 from coords.format import deg2ra, deg2dec
 
 
+def have_directory_write_access(dirname):
+    """Do we have write access to the given directory?
+
+    Parameters
+    ----------
+    dirname: str
+        The name of the directory to check.
+
+    Returns
+    -------
+    flag : bool
+
+    Notes:
+    ------
+    Based on https://stackoverflow.com/a/2113511
+    """
+
+    return os.access(dirname, os.W_OK | os.X_OK)
+
+
 def log(msg, level='LOG'):
     """Log a message.
 
@@ -1110,7 +1130,8 @@ def get_user_setting(store, key):
     This is a key that has been through the setup_user_setting
     routine, so has a 'proposed' and 'user' variant. The
     'user' setting is returned unless it is None or '', in which
-    case the 'proposed' setting is used.
+    case the 'proposed' setting is used (and a check is made to
+    ensure it is not None, but '' *is* allowed).
 
     Parameters
     ----------
@@ -1124,6 +1145,11 @@ def get_user_setting(store, key):
     value
         The value for this key.
 
+    Notes
+    -----
+    The code base has not been clear about what a value='' means;
+    so it is not clear what should be done if the proposed value
+    is ''. For now this is being allowed.
     """
 
     try:
@@ -1140,7 +1166,8 @@ def get_user_setting(store, key):
     if user is not None and user != '':
         return user
 
-    if proposed is None or proposed == '':
+    # if proposed is None or proposed == '':
+    if proposed is None:
         raise ValueError("Unexpected user/proposed values for " +
                          "key={} in store=\n{}".format(key, store))
 
@@ -1968,3 +1995,105 @@ def create_mhull_file(ensemble, revision, outfile,
     # ds.write(outfile, clobber=True)
     ds.write(outfile, clobber=False)
     print("Created: {}".format(outfile))
+
+
+def get_masterid_json(infile):
+    """Return the value of the masterid keyword in the JSON file.
+
+    It is an error if the keyword does not exist or is not
+    convertable to an integer.
+
+    Parameters
+    ----------
+    infile : str
+        The name of a file containing JSON, with the 'masterid'
+        field.
+
+    Returns
+    -------
+    mid : int
+        The masterid value.
+
+    """
+
+    jcts = read_json(infile)
+    try:
+        mid = jcts['masterid']
+    except KeyError:
+        raise IOError("masterid keyword missing in {}".format(infile))
+
+    try:
+        return int(mid)
+    except ValueError:
+        raise IOError("unexpected masterid={} in {}".format(mid,
+                                                            infile))
+
+
+def read_mhulls_json(datadir, userdir, ensemble, revision,
+                     validate=True):
+    """Read in the master hull information (JSON).
+
+    This reads in all the master-hull information stored in
+    JSON in the datadir and userdir directories. It can also
+    enforce that each master is listed as one of "accept",
+    "delete", or "manual". There is no check that manual
+    hulls have a polygon (a later check will do this).
+
+    Parameters
+    ----------
+    datadir : str
+        The location of the data directory for the ensemble.
+        This directory contains the mhull files and original
+        JSON files.
+    userdir : str
+        The location containing the user's choices for this
+        ensemble (JSON files created by the QA server).
+    ensemble : str
+        The ensemble name.
+    revision : int
+        The revision number
+    validate : bool, optional
+        If set (the default) then the useraction for each hull is
+        checked to make sure that it is in one of the accepted
+        states ("accept", "delete", or "manual").
+
+    Returns
+    -------
+    mhulls : dict
+        The keys are the master id values. The values are the JSON
+        contents as a dict.
+    """
+
+    hulls = {}
+    filename = make_hull_name_json(ensemble, None, revision)
+    pat1 = os.path.join(datadir, ensemble, filename)
+    for infile in glob.glob(pat1):
+
+        # To use the chs_utils read logic, we end up reading this
+        # file twice - the first time to get the master id value
+        # since this is needed by the chs_utils version. An
+        # alternative would be to deconstruct the file name to
+        # extract the version number. Neither option is ideal,
+        # and I don't want to change the chs_utils version at this
+        # time.
+        #
+        mid = get_masterid_json(infile)
+        assert mid not in hulls, mid
+
+        cts = read_ensemble_hull_json(datadir, userdir,
+                                      ensemble, mid, revision)
+        if cts is None:
+            raise IOError("No master-hull data from {}".format(infile))
+
+        # What is the user decision for this master?
+        # Note that there is a possibility that useraction=''
+        #
+        if validate:
+            decision = get_user_setting(cts, 'useraction')
+            if decision not in ['accept', 'delete', 'manual']:
+                raise IOError("Master hull {} has ".format(mid) +
+                              "decision='{}'".format(decision))
+
+        hulls[mid] = cts
+
+    return hulls

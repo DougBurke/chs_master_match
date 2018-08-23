@@ -77,102 +77,6 @@ import pycrates
 import chs_utils as utils
 
 
-def get_masterid_json(infile):
-    """Return the value of the masterid keyword in the JSON file.
-
-    It is an error if the keyword does not exist or is not
-    convertable to an integer.
-
-    Parameters
-    ----------
-    infile : str
-        The name of a file containing JSON, with the 'masterid'
-        field.
-
-    Returns
-    -------
-    mid : int
-        The masterid value.
-
-    """
-
-    jcts = utils.read_json(infile)
-    try:
-        mid = jcts['masterid']
-    except KeyError:
-        raise IOError("masterid keyword missing in {}".format(infile))
-
-    try:
-        return int(mid)
-    except ValueError:
-        raise IOError("unexpected masterid={} in {}".format(mid,
-                                                            infile))
-
-
-def read_mhulls_json(datadir, userdir, ensemble, revision):
-    """Read in the master hull information (JSON).
-
-    This reads in all the master-hull information stored in
-    JSON in the datadir and userdir directories. It also
-    enforces that each master is listed as one of "accept",
-    "delete", or "manual". There is no check that manual
-    hulls have a polygon (a later check will do this).
-
-    Parameters
-    ----------
-    datadir : str
-        The location of the data directory for the ensemble.
-        This directory contains the mhull files and original
-        JSON files.
-    userdir : str
-        The location containing the user's choices for this
-        ensemble (JSON files created by the QA server).
-    ensemble : str
-        The ensemble name.
-    revision : int
-        The revision number
-
-    Returns
-    -------
-    mhulls : dict
-        The keys are the master id values. The values are the JSON
-        contents as a dict.
-    """
-
-    hulls = {}
-    filename = utils.make_hull_name_json(ensemble,
-                                         None,
-                                         revision)
-    pat1 = os.path.join(datadir, ensemble, filename)
-    for infile in glob.glob(pat1):
-
-        # To use the chs_utils read logic, we end up reading this
-        # file twice - the first time to get the master id value
-        # since this is needed by the chs_utils version. An
-        # alternative would be to deconstruct the file name to
-        # extract the version number. Neither option is ideal,
-        # and I don't want to change the chs_utils version at this
-        # time.
-        #
-        mid = get_masterid_json(infile)
-        assert mid not in hulls, mid
-
-        cts = utils.read_ensemble_hull_json(datadir, userdir,
-                                            ensemble, mid, revision)
-        if cts is None:
-            raise IOError("No master-hull data from {}".format(infile))
-
-        # What is the user decision for this master?
-        decision = utils.get_user_decision(cts, 'useraction')
-        if decision not in ['accept', 'delete', 'manual']:
-            raise IOError("Master hull {} has ".format(mid) +
-                          "decision={}".format(decision))
-
-        hulls[mid] = cts
-
-    return hulls
-
-
 def read_poly_from_json(userdir, ensemble, mid, revision):
     """Read in the user-defined polygon for this master hull.
 
@@ -639,11 +543,11 @@ def finalize(datadir, userdir, ensemble,
     # components; if it is deleted then it has no components.
     #
     # [CHECK B]
-    mhulls_json = read_mhulls_json(datadir, userdir, ensemble,
-                                   revision)
+    mhulls_json = utils.read_mhulls_json(datadir, userdir, ensemble,
+                                         revision)
     polys = {}
     for mid, cts in mhulls_json.items():
-        decision = utils.get_user_decision(cts, 'useraction')
+        decision = utils.get_user_setting(cts, 'useraction')
 
         # polygon information
         if decision == 'manual':
@@ -667,7 +571,7 @@ def finalize(datadir, userdir, ensemble,
         # Are there any associated components?
         has_cpt = False
         for cpt in cpts:
-            mids = utils.get_user_decision(cpt, midkey)
+            mids = utils.get_user_setting(cpt, midkey)
             if mid in mids:
                 has_cpt = True
                 break
@@ -684,7 +588,7 @@ def finalize(datadir, userdir, ensemble,
     #
     # [CHECK H] -> kind of; this check doesn't really fit
     for cpt in cpts:
-        for mid in utils.get_user_decision(cpt, midkey):
+        for mid in utils.get_user_setting(cpt, midkey):
             if mid == -1:
                 continue
 
@@ -710,12 +614,12 @@ def finalize(datadir, userdir, ensemble,
     # [CHECK R]
     for mid, cts in mhulls_json.items():
         # do not care about deleted masters
-        if utils.get_user_decision(cts, 'useraction') == 'delete':
+        if utils.get_user_setting(cts, 'useraction') == 'delete':
             continue
 
         stacks = defaultdict(set)
         for cpt in cpts:
-            if mid not in utils.get_user_decision(cpt, midkey):
+            if mid not in utils.get_user_setting(cpt, midkey):
                 continue
 
             stack = cpt['stack']
@@ -738,10 +642,7 @@ TODO: look at polygons
   - do not overlap
     """
 
-    # Ensure we can write to the directory:
-    # https://stackoverflow.com/a/2113511
-    #
-    if not os.access(datadir, os.W_OK | os.X_OK):
+    if not utils.have_directory_write_access(datadir):
         raise IOError("unable to write to {}".format(datadir))
 
     # QUS:
