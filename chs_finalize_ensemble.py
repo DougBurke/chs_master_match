@@ -769,8 +769,8 @@ TODO: look at polygons
 
 
 def usage(progName):
-    sys.stderr.write("Usage: {} datadir userdir " +
-                     "ensemble\n".format(progName))
+    sys.stderr.write("Usage: {} datadir userdir ".format(progName) +
+                     "ensemble\n")
     sys.stderr.write("\n  datadir is the directory containing the ")
     sys.stderr.write("mhull and image files.\n")
     sys.stderr.write("  userdir is the directory from which the ")
