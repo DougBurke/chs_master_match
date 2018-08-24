@@ -56,7 +56,9 @@ function updatePage(json) {
 }
 
 
-function saveEnsemble(store) {
+function saveEnsemble(store, pagereload) {
+
+  pagereload = (typeof pagereload !== "undefined") ? pagereload : false;
 
   // Only send a message if the contents have changed
   const info = state.versions[latestRevision];
@@ -81,6 +83,14 @@ function saveEnsemble(store) {
   httpRequest.addEventListener("load", function() {
     info.usernotes.user = store.usernotes;
     info.status.user = store.status;
+
+    // do we reload the page? this really should be more surgical as
+    // being used to change the state of the "finish/status" box
+    // and the code currently isn't written to easily suppor this
+    //
+    // be explicit about not caching the page just in case
+    if (pagereload) { window.location.reload(false); }
+
   });
   httpRequest.addEventListener("error", function() {
       alert("Unable to save data!");
@@ -95,7 +105,7 @@ function saveEnsemble(store) {
   httpRequest.open('POST', '/save/ensemble');
   httpRequest.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
   httpRequest.send(JSON.stringify(store));
-  
+
 }
 
 // Send a save message if the contents have changed.
@@ -118,6 +128,11 @@ function saveUserContent() {
 // Indicate that this ensemble has been processed: i.e. it has been
 // reviewed by this user and is ready for review by other QA-ers.
 //
+// need to update the display after saving the status,
+// but this is complicated because only want to do so
+// *after* the server has indicated that the update
+// succeeded.
+//
 function saveStatus() {
 
   // We should only be able to trigger this action if all the
@@ -138,7 +153,7 @@ function saveStatus() {
 		 revision: latestRevision,
 		 status: newval,
 		 usernotes: info.usernotes.user};
-  saveEnsemble(store);
+  saveEnsemble(store, true);
 }
 
 
@@ -233,17 +248,21 @@ function setVersion(revision) {
   // 
   const final = document.getElementById('final');
   const finish = document.getElementById('finish');
-  const finished = document.getElementById('finished');
+  const finished_review = document.getElementById('finished-review');
+  const finished_completed = document.getElementById('finished-completed');
   if (isLatest) {
 
     final.style.display = 'block';
 
     if ((info.status.user === null) || (info.status.user === "todo")) {
-	finished.style.display = 'none';
+	finished_review.style.display = 'none';
+	finished_completed.style.display = 'none';
 
 	finish.disabled = !all_hulls_have_useraction;
-	finish.addEventListener("click",
-				(e) => { saveStatus(); });
+
+	finish.addEventListener("click", (e) => {
+          saveStatus();
+	});
 
 	usersave.addEventListener("click",
 				  (e) => { saveUserContent(); });
@@ -253,9 +272,24 @@ function setVersion(revision) {
 	usersave.disabled = true;
 	finish.style.display = 'none';
 
-    } else {
+	finished_review.style.display = 'inline';
+	finished_completed.style.display = 'none';
+
+    } else if (info.status.user === "done") {
 	usersave.disabled = true;
 	finish.style.display = 'none';
+
+	finished_review.style.display = 'none';
+	finished_completed.style.display = 'inline';
+    } else {
+	console.log("WARNING: unexpected info.status.user=[" +
+		    info.status.user + "]");
+
+	usersave.disabled = true;
+	finish.style.display = 'none';
+
+	finished_review.style.display = 'none';
+	finished_completed.style.display = 'none';
     }
 
   } else {

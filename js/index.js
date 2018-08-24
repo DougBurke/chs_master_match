@@ -6,8 +6,11 @@
 
 var usernotes = "";
 
+// datatable handling could be made more generic
+//
 var datatable_todo = undefined;
 var datatable_review = undefined;
+var datatable_completed = undefined;
 
 
 function plural(x) { if (x === 1) { return ""; } else { return "s"; } }
@@ -110,8 +113,9 @@ function saveUserContent() {
   
 }
 
-// For now this means that the display length of one of the tables
-// has been changed. Could also store current page number.
+// Try and save information about the tables that we would want
+// preserved on page reload, such as: size of table, current page
+// number, row order.
 //
 function saveDatatableSettings() {
 
@@ -139,9 +143,29 @@ function saveDatatableSettings() {
   httpRequest.addEventListener("loadend", function() {
       spinner.stop();
   });
+  
+  // Perhaps should have just saved these info structures
+  const info_todo = datatable_todo.page.info();
+  const info_review = datatable_review.page.info();
+  const info_completed = datatable_completed.page.info();
 
-  const store = {length: {todo: datatable_todo.page.len(),
-			  review: datatable_review.page.len()}};
+  const order_todo = datatable_todo.order();
+  const order_review = datatable_review.order();
+  const order_completed = datatable_completed.order();
+
+  const store = {length: {todo: info_todo.length,
+			  review: info_review.length,
+			  completed: info_completed.length
+			 },
+		 page: {todo: info_todo.page,
+			review: info_review.page,
+			completed: info_completed.page
+		       },
+		 order: {todo: order_todo,
+			 review: order_review,
+			 completed: order_completed
+			}
+		};
   httpRequest.open('POST', '/save/datatable');
   httpRequest.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
   httpRequest.send(JSON.stringify(store));
@@ -194,34 +218,66 @@ function updatePage(json) {
     add_ensemble_row(parent, ens);
   }
 
-  /*** not used at present
   parent = document.getElementById("completed-table-body");
   for (let i = 0; i < ncompleted; i++) {
     let ens = json.completed[i];
     add_ensemble_row(parent, ens);
   }
-  ***/
 
   // initialise the data tables
   datatable_todo = $('#todo-table').DataTable();
   datatable_review = $('#review-table').DataTable();
+  datatable_completed = $('#completed-table').DataTable();
 
-  if (json.datatable && json.datatable.length) {
+  if (json.datatable) {
+    if (json.datatable.length) {
       if (json.datatable.length.todo) {
-	datatable_todo.page.len(json.datatable.length.todo).draw();
+        datatable_todo.page.len(json.datatable.length.todo);
       }
       if (json.datatable.length.review) {
-	datatable_review.page.len(json.datatable.length.review).draw();
+        datatable_review.page.len(json.datatable.length.review);
       }
+      if (json.datatable.length.completed) {
+        datatable_completed.page.len(json.datatable.length.completed);
+      }
+    }
+
+    if (json.datatable.page) {
+      if (json.datatable.page.todo) {
+        datatable_todo.page(json.datatable.page.todo);
+      }
+      if (json.datatable.page.review) {
+        datatable_review.page(json.datatable.page.review);
+      }
+      if (json.datatable.page.completed) {
+        datatable_completed.page(json.datatable.page.completed);
+      }
+    }
+
+    if (json.datatable.order) {
+      if (json.datatable.order.todo) {
+        datatable_todo.order(json.datatable.order.todo);
+      }
+      if (json.datatable.order.review) {
+        datatable_review.order(json.datatable.order.review);
+      }
+      if (json.datatable.order.completed) {
+        datatable_completed.order(json.datatable.order.completed);
+      }
+    }
+
+    // not 100% convinced I have the draw argument correct here.
+    datatable_todo.draw(false);
+    datatable_review.draw(false);
+    datatable_completed.draw(false);
   }
 
   // Only set up the handler after setting the page length!
-  datatable_todo.on('length', () => {
-    saveDatatableSettings();
-  }); 
-  datatable_review.on('length', () => {
-    saveDatatableSettings();
-  }); 
+  for (var tbl of [datatable_todo, datatable_review, datatable_completed]) {
+    for (var event of ['length', 'order', 'page']) {
+      tbl.on(event, () => { saveDatatableSettings(); });
+    }
+  }
 }
 
 const spinopts = {
