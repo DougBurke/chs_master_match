@@ -4,64 +4,27 @@
 
 Usage:
 
-   ./chs_finalize_ensemble.py datadir userdir ensemble
+   ./chs_complete_ensemble.py datadir userdir ensemble
 
 Aim:
 
-Check that the given ensemble has been through QA and is valid.
-If so, create a finalized mhull file.
+Indicate that this ensemble has been through QA and can be
+finalized - i.e. the next step would be to call
 
-Checks include:
+   chs_finalize_ensemble.py datadir userdir ensemble
 
-   [A] the ensemble has been marked as completed (field JSON)
-   [B] the per-hull and per-component files agree with this (JSON)
-
-   [C] all stack components from CHSVER=1 are included
-   [D] no stack components are added to those in CHSVER=1
-       (this is done implicitly by using the CHSVER=1 values as the
-       set that is looked at)
-   [E] stack level components are either deleted (master id=-1)
-       or have master id > 0
-   [F] if a stack level component is unambiguously matched it is
-       only associated with one master id
-   [G] if a stack level component is ambiguously matched it is
-       associated with multiple masters
-
-   [H] each master has at least one stack-level component
-   [I] master ids are >= 1
-   [J] each master has status=okay
-   [K] the number of points in the polgon is > 2 and is correct
-   [L] the master polygon is closed
-   [M] the master polygon is not self-intersecting
-
-   [N] master polygons are convex hulls
-   [O] no master polygons overlap
-   [P] each polygon has a base stack that is a member of the ensemble
-
-   [Q] stack-level polygons only overlap the master polygons they
-       are associated with (whether unambiguous or ambiguous)
-
-   [R] each master has at least one include_in_centroid match
-       (that isn't from a deleted component)
-
-   Warnings:
-
-   [WA] if a stack-level component is not deleted if it's
-        likelihood is < 350
-
-A master can consist of ambiguous-only matches (or match) in
-this scheme. I have asked Joe if this is a problem and it isn't.
-
-Conversions: TODO
+This does not have all the checks chs_finalize_ensemble.py has,
+instead it focusses on managing the deletion step (i.e. ensuring
+that the data matches up).
 
 """
 
+import json
 import os
 import sys
+import time
 
 from collections import defaultdict
-
-import pycrates
 
 import chs_utils as utils
 
@@ -72,7 +35,7 @@ print("\n*** WARNING hackField hack is in operation ***\n\n")
 
 def create_mhull(outfile, ensemble, revision, hullmd,
                  cpts, mhulls, polys,
-                 mstzero=9000,
+                 mstzero=0,
                  compzero=0, creator=None):
     """Create the final master hull file.
 
@@ -106,18 +69,6 @@ def create_mhull(outfile, ensemble, revision, hullmd,
     creator : str or None
         The value for the CREATOR keyword, if set.
 
-    Notes
-    -----
-    Deleted components are re-numbered to have unique master ids:
-    -1, -2, ...
-    """
-
-    """DBG:
-    print("***"); print(hullmd)
-    print("***"); print(cpts)
-    print("***"); print(mhulls)
-    print("***"); print(polys)
-    print(polys[1]['eqpos'].shape[1])
     """
 
     assert mstzero >= 0
@@ -128,9 +79,6 @@ def create_mhull(outfile, ensemble, revision, hullmd,
               'svdqafile': hullmd['svdqafile'],
               'centroidfile': hullmd['centroidfile']}
 
-    # track the deleted components
-    ndel = 0
-
     hullmatch = defaultdict(list)
     for cpt in cpts:
 
@@ -140,13 +88,9 @@ def create_mhull(outfile, ensemble, revision, hullmd,
         incl_in_centroid = utils.get_user_setting(cpt,
                                                   'include_in_centroid')
 
-        # TODO: check that this hasn't already been done,
-        #       because it should have
-        #
-        #       Should this support delete?
-        #
         if len(mids) == 1:
-            assert cpt['match_type'] == 'unambiguous', cpt
+            assert cpt['match_type'] in ['unambiguous', 'deleted'], \
+                cpt
         else:
             assert cpt['match_type'] == 'ambiguous', cpt
 
@@ -154,11 +98,7 @@ def create_mhull(outfile, ensemble, revision, hullmd,
 
             assert mid != 0, mids
             if mid < 0:
-                ndel += 1
-
-                mid = -1 * ndel
                 nhulls = -1
-
             else:
                 nhulls = mhulls[mid]['ncpts']
 
@@ -188,11 +128,13 @@ def create_mhull(outfile, ensemble, revision, hullmd,
     for mid in sorted(list(mhulls.keys())):
 
         mhull = mhulls[mid]
+        status = utils.get_user_setting(mhull, 'useraction')
+        if status == 'delete':
+            continue
+
         poly = polys[mid]
         eqpos = poly['eqpos']
         nvertex = eqpos.shape[1]
-
-        status = utils.get_user_setting(mhull, 'useraction')
 
         # TODO: fix this
         man_match = False
@@ -211,41 +153,10 @@ def create_mhull(outfile, ensemble, revision, hullmd,
                             hullmatch, hulllist, header,
                             creator=creator)
 
-    # Check we can read in both blocks, but no real validation
-    # beyond that.
-    #
-    chk = pycrates.CrateDataset(outfile, mode='r')
-    assert chk.get_ncrates() == 3
-    assert chk.get_current_crate() == 2
 
-    # Note: hack for nrows=None to mean empty table
-    def valid(idx, name, nrows=None):
-        bl = chk.get_crate(idx)
-        assert bl.name == name
-        if nrows is None:
-            assert bl.get_shape() == (0,)
-        else:
-            assert bl.get_nrows() == nrows
-
-    # TODO: is len(cpts) actually correct when we have ambiguous
-    # matches?
-    valid(1, 'PRIMARY')
-    valid(2, 'HULLMATCH', len(cpts))
-    valid(3, 'HULLLIST', len(mhulls))
-    chk = None
-
-
-def indicate_finalised(datadir, ensemble, revision):
-    """Add the terminal file for this ensemble.
-
-    Add the marker file to let the system know this ensemble has
-    been finished. This has two uses:
-
-      a) easy to spot by other software (rather than having to
-         work out if an mhull file is finalised)
-      b) it ensures that we can recover from a failure during
-         finalization, which may leave a mhull file on disk
-         that has not been validated.
+def indicate_completed(datadir, ensemble, revision,
+                       creator=None):
+    """Add the field JSON file saying it is done. Maybe.
 
     Parameters
     ----------
@@ -258,6 +169,8 @@ def indicate_finalised(datadir, ensemble, revision):
     revision : int
         The revision number of the finalized mhull file (this
         file must exist in datadir).
+    creator : str, optional
+        The name of the file (used in the usernotes field).
 
     """
 
@@ -269,28 +182,36 @@ def indicate_finalised(datadir, ensemble, revision):
     if not os.path.isfile(infile):
         raise IOError("Unable to find {}".format(infile))
 
-    outname = utils.make_terminal_name(ensemble)
+    outname = utils.make_field_name_json(ensemble,
+                                         revision=revision)
     outfile = os.path.join(datadir, ensemble, outname)
     if os.path.isfile(outfile):
-        raise IOError("Terminal file already exists: {}".format(outfile))
+        raise IOError("Status=done file already exists: {}".format(outfile))
 
-    utils.touch_file(outfile)
-    if not os.path.isfile(outfile):
-        # should not be needed
-        raise IOError("Unable to create: {}".format(outfile))
+    out = {'status': 'done',
+           'lastmodified': time.asctime(),
+           'revision': "{:03d}".format(int(revision))}
+
+    if creator is None:
+        out['usernotes'] = 'auto completed'
+    else:
+        out['usernotes'] = 'completed by {}'.format(creator)
+
+    with open(outfile, 'w') as fh:
+        fh.write(json.dumps(out))
 
 
-def finalize(datadir, userdir, ensemble,
+def complete(datadir, userdir, ensemble,
              creator=None,
              mrgsrc3dir='/data/L3/chs_master_match/input/mrgsrc3'):
-    """Create the final mhull file for this ensemble.
+    """Create the finished mhull file for this ensemble.
 
     Parameters
     ----------
     datadir : str
         The location of the data directory - that is the mhull
         and original JSON files. It is also the location where
-        the final mhull file is written.
+        the completed mhull file is written.
     userdir : str
         The location from which the user has run the QA server.
     ensemble : str
@@ -333,12 +254,6 @@ def finalize(datadir, userdir, ensemble,
     # total set of components is. This is done separately
     # even if the final revision is revision=1.
     #
-    # It is not clear if this is a sensible step, since it
-    # requires carrying along "deleted" components from previous
-    # revisions. However, we need this information in the output
-    # file for Joe, so whether we carry it along or add in at
-    # this point is an open question.
-    #
     assert mhulls[0][0] == 1, mhulls[0][0]
     vals1 = utils.read_master_hulls(mhulls[0][1], mrgsrc3dir)
     expected_components = []
@@ -354,28 +269,27 @@ def finalize(datadir, userdir, ensemble,
     if hackField:
         status = utils.read_ensemble_status(datadir,
                                             # userdir,
-                                            "/pool7/dburke/hulls",
+                                            "/pool7/dburke/test",
                                             ensemble, revision)
     else:
         status = utils.read_ensemble_status(datadir, userdir,
                                             ensemble, revision)
 
-    # [CHECK A]
-    if status != 'done':
+    # This script converts review to done: it may get changed
+    # to require a "done" setting, which would be set by the
+    # UI, but currently we do not have this capability.
+    #
+    if status != 'review':
         sys.stderr.write("ERROR: ensemble is marked " +
                          "status={}\n".format(status))
         sys.exit(1)
 
-    # What are the component-level decisions?
+    # Read in the component-level decisions (based on the ver=001
+    # list of components).
     #
-    # This ensures that all components from CHSVER=1 have
-    # information and that there are no "master_id=0"
-    # cases, or ones marked as both deleted and not.
-    #
-    # TODO: what is the best way to index this information?
-    #
-    # [CHECK C]
-    # [CHECK D] => as mentioned this is implicit rather than explicit
+    # These can be changed by the master decisions (primarily
+    # delete). There is limited checking of how consistent
+    # everything is.
     #
     cpts = []
     for stack, cpt in expected_components:
@@ -396,7 +310,8 @@ def finalize(datadir, userdir, ensemble,
     # from the input mhull file.
     #
     # For each master check that if it is valid then it has
-    # components; if it is deleted then it has no components.
+    # components; if it is deleted then ensure any components
+    # it has are marked as deleted.
     #
     # [CHECK B]
     mhulls_json = utils.read_mhulls_json(datadir, userdir, ensemble,
@@ -424,83 +339,19 @@ def finalize(datadir, userdir, ensemble,
 
         polys[mid] = {'eqpos': poly, 'base_stk': basestk}
 
-        # Are there any associated components?
-        has_cpt = False
-        for cpt in cpts:
-            mids = utils.get_user_setting(cpt, midkey)
-
-            print("DBG: mid = {}  mids = {}".format(mid, mids))
-
-            if mid in mids:
-                has_cpt = True
-                break
-
         if decision == 'delete':
-            if has_cpt:
-                raise IOError("Master id {} is ".format(mid) +
-                              "deleted but it has components")
-        elif not has_cpt:
-            raise IOError("Master id {} has ".format(mid) +
-                          "no components")
 
-    # Ensure that the components do not refer to an unknown master.
-    #
-    # [CHECK H] -> kind of; this check doesn't really fit
-    for cpt in cpts:
-        for mid in utils.get_user_setting(cpt, midkey):
-            if mid == -1:
-                continue
+            for cpt in cpts:
+                mids = utils.get_user_setting(cpt, midkey)
+                if mid not in mids:
+                    continue
 
-            if mid not in mhulls_json:
-                raise IOError("cpt references unknown master:\n" +
-                              "{}".format(cpt))
+                mids.remove(mid)
+                if len(mids) == 0:
+                    mids = [-1]
+                    cpt['match_type'] = 'deleted'
 
-    # Ensure that each master has at least one 'include_in_centroid'.
-    #
-    # Ignore any "deleted" component that has include_in_centroid
-    # set to True as this shouldn't be acted on by anything.
-    #
-    # Note: include_in_centroid is really a per-stack setting than a
-    # per-component one. So ensure that all components in a stack
-    # match (at least for a given hull).
-    #
-    # Note that ambiguous components can have include_in_centroid
-    # since it is really the stack not the component.
-    #
-    # This is done after the above checks (rather than being part
-    # of it) as it may simplify a check slightly.
-    #
-    # [CHECK R]
-    for mid, cts in mhulls_json.items():
-        # do not care about deleted masters
-        if utils.get_user_setting(cts, 'useraction') == 'delete':
-            continue
-
-        stacks = defaultdict(set)
-        for cpt in cpts:
-            if mid not in utils.get_user_setting(cpt, midkey):
-                continue
-
-            stack = cpt['stack']
-            flag = utils.get_user_setting(cpt, 'include_in_centroid')
-            # print("DBG: {} -> {}".format(cpt['include_in_centroid'], flag))
-            stacks[stack].add(flag)
-
-        if len(stacks) == 0:
-            raise IOError("Master id {} ".format(mid) +
-                          "has no include_in_centroid")
-
-        for stack, flags in stacks.items():
-            if len(flags) != 1:
-                raise IOError("stack {} is in/out ".format(stack) +
-                              "of master id {}".format(mid))
-
-    """
-TODO: look at polygons
-  - have a base stack
-  - non self-intersecting
-  - do not overlap
-    """
+                cpt[midkey]['user'] = mids
 
     # START HACK
     print("\n*** HACKING OUTDIR:")
@@ -514,12 +365,6 @@ TODO: look at polygons
     if not utils.have_directory_write_access(datadir):
         raise IOError("unable to write to {}".format(datadir))
 
-    # QUS:
-    #   what are the conditions that we do not need to create a
-    #   new file? Actually, we need to do so since the mhull
-    #   file we initially create is, by design, not finished
-    #   (as it requires the status field to be changed).
-    #
     finished_revision = revision + 1
     outname = utils.make_mhull_name(ensemble, finished_revision)
     outfile = os.path.join(datadir, ensemble, outname)
@@ -531,11 +376,8 @@ TODO: look at polygons
                  cpts, mhulls_json, polys,
                  creator=creator)
 
-    # have decided do not want to do a validation step after
-    # reading in the file, as this repeats the checks we have
-    # already done
-    #
-    indicate_finalised(datadir, ensemble, finished_revision)
+    indicate_completed(datadir, ensemble, finished_revision,
+                       creator=creator)
 
 
 def usage(progName):
@@ -560,5 +402,5 @@ if __name__ == "__main__":
     userdir = os.path.normpath(os.path.abspath(sys.argv[2]))
     ensemble = sys.argv[3]
 
-    finalize(datadir, userdir, ensemble,
+    complete(datadir, userdir, ensemble,
              creator=sys.argv[0])

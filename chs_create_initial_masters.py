@@ -424,8 +424,11 @@ def write_hulls(ensemble, outfile, hullcpts, hullareas, outlines,
     man_match = []
 
     nhulls = len(outlines)
-    eqpos = np.full((nhulls, 2, nmax), np.nan,
-                    dtype=np.float64)
+
+    # I have moved this logic into create_mhull_file
+    # eqpos = np.full((nhulls, 2, nmax), np.nan,
+    #                 dtype=np.float64)
+    eqpos = []
 
     # Ugh: loop getting messy
     nstkhull = [len(c) for c in hullcpts]
@@ -449,6 +452,7 @@ def write_hulls(ensemble, outfile, hullcpts, hullareas, outlines,
 
         if outline['status'].startswith('qa'):
             nvertex.append(0)
+            eqpos.append(None)
 
             print("Skipping data for " +
                   "Match_Id={} status={}".format(i + 1,
@@ -460,7 +464,8 @@ def write_hulls(ensemble, outfile, hullcpts, hullareas, outlines,
             npts = vs.shape[1]
 
             nvertex.append(npts)
-            eqpos[i, :, :npts] = vs
+            # eqpos[i, :, :npts] = vs
+            eqpos.append(vs)
 
     hulllist = {}
     hulllist['master_id'] = mid

@@ -1884,20 +1884,38 @@ def create_mhull_file(ensemble, revision, outfile,
         versions of the column names.
     header : dict
         Information used for the header (and perhaps for columns too).
-        Keys are: svdqa, centroid, stacks, compzero. svdqa and centroid
-        contain the full path to the files used for the STKSVDQA and
-        INCLUDE_IN_CENTROID columns. stacks is a list of the stacks
-        that form the ensemble, and to be written out as STKIDxxx
-        values (in input order).
+        Keys are: svdqa, centroid, stacks, mstzero, and compzero.
+        svdqa and centroid contain the full path to the files used
+        for the STKSVDQA and INCLUDE_IN_CENTROID columns.
+        stacks is a list of the stacks that form the ensemble, and to
+        be written out as STKIDxxx values (in input order).
+        mstzero is the value added to the Master_Id value for
+        values > 0 for both HULLMATCH and HULLLIST blocks
         compzero is expected to be 0 (it is added to the COMPONENT
         values for hullmatch)
     creator : None or str, optional
         The name to use for the CREATOR field in the header.
+
+    Notes
+    -----
+
+    It is required that the HULLMATCH block has at least one row,
+    but the HULLLIST block can have 0 rows.
+
     """
+
+    # As may not be set
+    #
+    try:
+        mstzero = header['mstzero']
+    except KeyError:
+        mstzero = 0
 
     # Extract header info
     #
     extra_hdr = [('ENSEMBLE', ensemble, 'The ensemble'),
+                 ('MSTZERO', mstzero,
+                  'The offset applied to positive Master_Id values'),
                  ('COMPZERO', header['compzero'],
                   'The COMPONENT value for cpt=0'),
                  ('SVDQAFIL', header['svdqafile'],
@@ -1925,7 +1943,14 @@ def create_mhull_file(ensemble, revision, outfile,
     #       but it can be useful to know how many stack-level
     #       hulls there are in a master when looking at this data.
     #
-    add_col(cr, 'Master_Id', hullmatch['master_id'],
+    mids = []
+    for mid in hullmatch['master_id']:
+        if mid > 0:
+            mid += mstzero
+
+        mids.append(mid)
+
+    add_col(cr, 'Master_Id', mids,
             desc='This is an internal number, do not expose')
     add_col(cr, 'NHULLS', hullmatch['nhulls'],
             desc='The number of stack-level hulls in the master')
@@ -1964,7 +1989,14 @@ def create_mhull_file(ensemble, revision, outfile,
     add_standard_header(cr, creator=creator, revision=revision)
     add_header(cr, extra_hdr)
 
-    add_col(cr, 'Master_Id', hulllist['master_id'],
+    mids = []
+    for mid in hulllist['master_id']:
+        if mid > 0:
+            mid += mstzero
+
+        mids.append(mid)
+
+    add_col(cr, 'Master_Id', mids,
             desc='This is an internal number, do not expose')
     add_col(cr, 'STATUS', hulllist['status'],
             desc='Did the master-match work?')
@@ -1984,10 +2016,44 @@ def create_mhull_file(ensemble, revision, outfile,
 
     # NOTE: there is no POS coordinate column in this block
     #       (so can not attach a transform to it)
+    #
+    # Want a 3D NumPy array but assume the input is a list of
+    # 2D NumPy arrays of different sizes, given by the nvertex
+    # column.
+    #
+    nhulls = len(hulllist['nvertex'])
+    if nhulls > 0:
+        nmax = np.asarray(hulllist['nvertex']).max()
+        assert nmax > 2, nmax
+
+        eqpos = np.full((nhulls, 2, nmax), np.nan, dtype=np.float64)
+        for i, eq in enumerate(hulllist['eqpos']):
+
+            # Should we not include the hull polygon for status=delete?
+            #
+            if eq is None:
+                status = hulllist['status'][i]
+                assert status == 'qa', status
+                continue
+
+            assert eq.ndim == 2, eq.shape
+            assert eq.shape[0] == 2, eq.shape
+            assert eq.shape[1] <= nmax, (eq.shape, nmax)
+
+            eqpos[i, :, :hulllist['nvertex'][i]] = eq
+
+    else:
+        # Can we get array with just [] here or does it have
+        # to be a three-dimensional empty array? It looks like it
+        # has to be nD otherwise you can get a core dump (not sure
+        # what the requirements are).
+        #
+        eqpos = np.asarray([], dtype=np.float64).reshape(0, 2, 0)
+
     col = pycrates.create_vector_column('EQPOS', ['RA', 'DEC'])
     col.desc = 'The master hull vertices'
     col.unit = 'degree'
-    col.values = hulllist['eqpos']
+    col.values = eqpos
     cr.add_column(col)
 
     ds.add_crate(cr)
@@ -2097,3 +2163,229 @@ def read_mhulls_json(datadir, userdir, ensemble, revision,
         hulls[mid] = cts
 
     return hulls
+
+
+def read_component_json(datadir, userdir, ensemble,
+                        stack, cpt, revision):
+    """Read in the component-level information (JSON).
+
+    Read in the user decision for this stack-level component. There
+    is an error if a component has a master id of 0 (i.e. it was
+    marked to be moved but no move has happened) or if it is
+    marked as deleted (-1) and has any other masterid in it.
+
+    Parameters
+    ----------
+    datadir : str
+        The location of the data directory for the ensemble.
+        This directory contains the mhull files and original
+        JSON files.
+    userdir : str
+        The location containing the user's choices for this
+        ensemble (JSON files created by the QA server).
+    ensemble : str
+        The ensemble name.
+    stack : str
+        The stack name
+    cpt : int
+        The component number.
+    revision : int
+        The revision number
+
+    Returns
+    -------
+    mhulls : dict
+        The component info, with an added field 'match_type'
+        which is set to 'ambiguous', 'unambiguous', or 'deleted'
+        depending on the number of master_id values
+        (-1 is deleted, a single positive value is unambiguous,
+        multiple positive values is ambiguous).
+
+    Notes
+    -----
+    The error message may report the wrong file (e.g. user rather than
+    data) depending on where the value was read from. I don't think
+    it's worth fixing this.
+    """
+
+    filename = make_component_name_json(ensemble, stack, cpt,
+                                        revision)
+    infile = os.path.join(datadir, ensemble, filename)
+    jcts = read_json(infile)
+    if jcts is None:
+        raise IOError("Unable to read: {}".format(infile))
+
+    # Set up for user information.
+    #
+    midkey = 'master_id'
+    userkeys = [midkey, 'include_in_centroid', 'lastmodified']
+    for key in userkeys:
+        if not setup_user_setting(jcts, key, stringval=False):
+            raise IOError("Unable to set up {}".format(key))
+
+    infile = os.path.join(userdir, ensemble, filename)
+    if os.path.exists(infile):
+        ucts = read_json(infile)
+        for key in userkeys:
+            if key in ucts:
+                jcts[key]['user'] = ucts[key]
+
+    # Validate the master id setting
+    #   - must be at least 1 value
+    #   - if multiple then all > 0
+    #   - no 0 values
+    #
+    # [CHECK E]
+    mids = get_user_setting(jcts, midkey)
+    if len(mids) == 0:
+        raise IOError("No master ids in {}".format(infile))
+    minid = min(mids)
+    if minid < -1:
+        raise IOError("Master id={} in {}".format(minid, infile))
+    if 0 in mids:
+        raise IOError("{} has master_id=0".format(infile))
+    if len(mids) > 1 and any([mid < 1 for mid in mids]):
+        raise IOError("Ambiguous match but mid < 1 " +
+                      "in {}".format(infile))
+
+    # [CHECK F] -> not really a check, more a definition
+    # [CHECK G] -> diffo
+    if -1 in mids:
+        match_type = 'deleted'
+    elif len(mids) > 1:
+        match_type = 'ambiguous'
+    else:
+        match_type = 'unambiguous'
+
+    assert 'match_type' not in jcts, str(jcts)
+    jcts['match_type'] = match_type
+    return jcts
+
+
+def read_poly_from_json(userdir, ensemble, mid, revision):
+    """Read in the user-defined polygon for this master hull.
+
+    It is an error for the polygon not to exist or to have
+    less than 3 vertexes (and there must be only one).
+
+    Parameters
+    ----------
+    userdir : str
+        The location containing the user's choices for this
+        ensemble (JSON files created by the QA server).
+    ensemble : str
+        The ensemble name.
+    revision : int
+        The revision number
+
+    Returns
+    -------
+    poly : ndarray
+        The RA and Dec of the polygon vertices. The polygon is
+        closed, and has shape (2, nvertex).
+
+    """
+
+    filename = make_poly_name_json(ensemble, mid, revision)
+    infile = os.path.join(userdir, filename)
+
+    cts = read_json(infile)
+    for key in ['ensemble', 'masterid', 'lastmodified', 'polygons',
+                'revision']:
+        if key not in cts:
+            raise IOError("polygon {} missing ".format(infile) +
+                          "key={}".format(key))
+
+    polys = cts['polygons']
+    npolys = len(polys)
+    if npolys == 0:
+        raise IOError("{} contains no polygons".format(infile))
+    elif npolys > 1:
+        raise IOError("{} contains {} polygons".format(infile,
+                                                       npolys))
+
+    poly = polys[0]
+    for key in ['ra', 'dec']:
+        if key not in poly:
+            raise IOError("{} polygon missing ".format(infile) +
+                          "{} key".format(key))
+
+    ra = poly['ra']
+    dec = poly['dec']
+    nra = len(ra)
+    ndec = len(dec)
+    if nra != ndec:
+        raise IOError("{} polygon ra/dec mismatch".format(infile))
+
+    # [CHECK K]
+    if nra < 3:
+        raise IOError("{} polygon < 3 vertexes".format(infile))
+
+    # [CHECK L]
+    if (ra[0] != ra[-1]) or (dec[0] != dec[-1]):
+        ra.append(ra[0])
+        dec.append(dec[0])
+
+    return np.vstack((ra, dec))
+
+
+def read_poly_from_mhull(hulllist, masterid):
+    """Read in the polygon from the master hull file.
+
+    It is an error for the polygon not to exist or to have
+    less than 3 vertexes.
+
+    Parameters
+    ----------
+    hulllist : dict
+        The second argument of chs_utils.read_mhull
+    masterid : int
+        The master id
+
+    Returns
+    -------
+    poly, stack : ndarray, str
+        The RA and Dec of the polygon vertices. The polygon is
+        closed, and has shape (2, nvertex). The stack is the
+        "base" stack for the polygon.
+
+    """
+
+    try:
+        hull = hulllist[masterid]
+    except KeyError:
+        raise IOError("Unable to get masterid={}".format(masterid) +
+                      " from mhull file")
+
+    eqpos = hull['eqpos']
+    if np.any(~np.isfinite(eqpos)):
+        raise IOError("hull polygon is not finite! " +
+                      "masterid={}".format(masterid))
+
+    # [CHECK K]
+    n = eqpos.shape[1]
+    if n < 3:
+        raise IOError("masterid={} ".format(masterid) +
+                      "polygon < 3 vertexes")
+
+    # [CHECK L]
+    ra = eqpos[0]
+    dec = eqpos[1]
+    if (ra[0] != ra[-1]) or (dec[0] != dec[-1]):
+        # It should be closed
+        print("WARNING: mhull polygon not closed; " +
+              "masterid={}".format(masterid))
+
+        # Using np.resize automatically copies over the first
+        # element into the new space, which is what we want. The
+        # copies are because the arrays are slices, so need to
+        # be converted into their own data.
+        #
+        ra = ra.copy()
+        dec = dec.copy()
+        npts = ra.shape + 1
+        ra = np.resize(ra, npts)
+        dec = np.resize(dec, npts)
+        eqpos = np.vstack((ra, dec))
+
+    return eqpos, hull['base_stk']
