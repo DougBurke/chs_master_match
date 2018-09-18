@@ -66,10 +66,6 @@ import pycrates
 import chs_utils as utils
 
 
-hackField = True
-print("\n*** WARNING hackField hack is in operation ***\n\n")
-
-
 def create_mhull(outfile, ensemble, revision, hullmd,
                  cpts, mhulls, polys,
                  mstzero=9000,
@@ -351,14 +347,8 @@ def finalize(datadir, userdir, ensemble,
                                         cpt['component']))
 
     # what is the ensemble status?
-    if hackField:
-        status = utils.read_ensemble_status(datadir,
-                                            # userdir,
-                                            "/pool7/dburke/hulls",
-                                            ensemble, revision)
-    else:
-        status = utils.read_ensemble_status(datadir, userdir,
-                                            ensemble, revision)
+    status = utils.read_ensemble_status(datadir, userdir,
+                                        ensemble, revision)
 
     # [CHECK A]
     if status != 'done':
@@ -496,20 +486,11 @@ def finalize(datadir, userdir, ensemble,
                               "of master id {}".format(mid))
 
     """
-TODO: look at polygons
-  - have a base stack
-  - non self-intersecting
-  - do not overlap
+    TODO: look at polygons
+    - have a base stack
+    - non self-intersecting
+    - do not overlap
     """
-
-    # START HACK
-    print("\n*** HACKING OUTDIR:")
-    datadir = '/pool7/dburke/hulls'
-    dname = os.path.join(datadir, ensemble)
-    if not os.path.exists(dname):
-        os.mkdir(dname)
-
-    # END HACK
 
     if not utils.have_directory_write_access(datadir):
         raise IOError("unable to write to {}".format(datadir))

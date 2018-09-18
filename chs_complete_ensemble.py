@@ -29,10 +29,6 @@ from collections import defaultdict
 import chs_utils as utils
 
 
-hackField = True
-print("\n*** WARNING hackField hack is in operation ***\n\n")
-
-
 def create_mhull(outfile, ensemble, revision, hullmd,
                  cpts, mhulls, polys,
                  mstzero=0,
@@ -266,14 +262,8 @@ def complete(datadir, userdir, ensemble,
                                         cpt['component']))
 
     # what is the ensemble status?
-    if hackField:
-        status = utils.read_ensemble_status(datadir,
-                                            # userdir,
-                                            "/pool7/dburke/test",
-                                            ensemble, revision)
-    else:
-        status = utils.read_ensemble_status(datadir, userdir,
-                                            ensemble, revision)
+    status = utils.read_ensemble_status(datadir, userdir,
+                                        ensemble, revision)
 
     # This script converts review to done: it may get changed
     # to require a "done" setting, which would be set by the
@@ -352,15 +342,6 @@ def complete(datadir, userdir, ensemble,
                     cpt['match_type'] = 'deleted'
 
                 cpt[midkey]['user'] = mids
-
-    # START HACK
-    print("\n*** HACKING OUTDIR:")
-    datadir = '/pool7/dburke/hulls'
-    dname = os.path.join(datadir, ensemble)
-    if not os.path.exists(dname):
-        os.mkdir(dname)
-
-    # END HACK
 
     if not utils.have_directory_write_access(datadir):
         raise IOError("unable to write to {}".format(datadir))
