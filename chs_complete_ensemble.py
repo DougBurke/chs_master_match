@@ -5,7 +5,7 @@
 Usage:
 
    ./chs_complete_ensemble.py datadir userdir ensemble
-
+       --mrgsrc3dir /path/to/mrgsrc3files/
 Aim:
 
 Indicate that this ensemble has been through QA and can be
@@ -17,6 +17,9 @@ This does not have all the checks chs_finalize_ensemble.py has,
 instead it focusses on managing the deletion step (i.e. ensuring
 that the data matches up).
 
+At present it only supports 'accept' and 'reject'; 'manual' masters
+cause the script to error out.
+
 """
 
 import json
@@ -25,6 +28,8 @@ import sys
 import time
 
 from collections import defaultdict
+
+import numpy as np
 
 import chs_utils as utils
 
@@ -106,13 +111,15 @@ def create_mhull(outfile, ensemble, revision, hullmd,
             hullmatch['component'].append(cpt['component'])
             hullmatch['match_type'].append(cpt['match_type'])
 
-            # TODO: why is area info missing in input?
-            hullmatch['area'].append(-1.0)
+            # Do not really care about the area any longer (and am not
+            # carrying the value around), so just use a terminal value.
+            #
+            # hullmatch['area'].append(cpt['area'])
+            hullmatch['area'].append(np.nan)
             hullmatch['eband'].append(cpt['eband'])
             hullmatch['likelihood'].append(cpt['likelihood'])
 
-            # TODO: has man_code been corrected?
-            hullmatch['man_code'].append(cpt['mancode'])
+            hullmatch['man_code'].append(cpt['man_code'])
 
             hullmatch['mrg3rev'].append(cpt['mrg3rev'])
             hullmatch['include_in_centroid'].append(incl_in_centroid)
@@ -132,6 +139,10 @@ def create_mhull(outfile, ensemble, revision, hullmd,
         eqpos = poly['eqpos']
         nvertex = eqpos.shape[1]
 
+        # This will have to be updated, but at present, when only
+        # supporting deletion or acceptance of the proposed hull,
+        # neither flag is set.
+        #
         # TODO: fix this
         man_match = False
         man_reg = False
@@ -202,6 +213,11 @@ def complete(datadir, userdir, ensemble,
              mrgsrc3dir='/data/L3/chs_master_match/input/mrgsrc3'):
     """Create the finished mhull file for this ensemble.
 
+    This assumes that the hull has either been deleted or
+    the CHSVER=1 version accepted. It does not YET support
+    modifying the hull or re-generating the master hull from
+    a subset of the original components.
+
     Parameters
     ----------
     datadir : str
@@ -250,16 +266,36 @@ def complete(datadir, userdir, ensemble,
     # total set of components is. This is done separately
     # even if the final revision is revision=1.
     #
+    # master_ids_base has the Master_Id as the key and
+    # contains a set of (stack, component) values, representing
+    # the original set of stack-level hulls that contributed
+    # to the master.
+    #
     assert mhulls[0][0] == 1, mhulls[0][0]
     vals1 = utils.read_master_hulls(mhulls[0][1], mrgsrc3dir)
     expected_components = []
-    for cpts in vals1[0].values():
-        # hullmatch is a dict (key = masterid) where the
-        # values is a list of component info.
-        #
+    master_ids_base = defaultdict(set)
+
+    original_component_data = defaultdict(list)
+
+    # hullmatch (first argument of read_master_hulls) is a
+    # dict (with key = masterid) where the values are a
+    # list of component info.
+    #
+    for mid, cpts in vals1[0].items():
+
+        assert mid not in master_ids_base
+
         for cpt in cpts:
-            expected_components.append((cpt['stack'],
-                                        cpt['component']))
+            key = (cpt['stack'], cpt['component'])
+            master_ids_base[mid].add(key)
+            expected_components.append(key)
+
+            # components can be associated with multiple masters,
+            # so store each entry in a list (this is wasteful since
+            # all the other fields are the same).
+            #
+            original_component_data[key].append(cpt)
 
     # what is the ensemble status?
     status = utils.read_ensemble_status(datadir, userdir,
@@ -274,23 +310,54 @@ def complete(datadir, userdir, ensemble,
                          "status={}\n".format(status))
         sys.exit(1)
 
-    # Read in the component-level decisions (based on the ver=001
-    # list of components).
-    #
-    # These can be changed by the master decisions (primarily
-    # delete). There is limited checking of how consistent
-    # everything is.
-    #
-    cpts = []
-    for stack, cpt in expected_components:
-        cptinfo = utils.read_component_json(datadir, userdir,
-                                            ensemble, stack, cpt,
-                                            revision)
-        cpts.append(cptinfo)
-
     # Choice of masterid vs master_id, so use a variable
     #
     midkey = 'master_id'
+
+    # Read in the component-level decisions (based on the ver=001
+    # list of components).
+    #
+    # There is limited checking of how consistent everything is.
+    #
+    # master_ids_new is master_ids_base but for this version.
+    # This will be modified when reviewing the master-hull
+    # decisions (if the hull is marked as being deleted).
+    #
+    cpts = []
+    master_ids_new = defaultdict(set)
+    for key in expected_components:
+        stack, cpt = key
+        cptinfo = utils.read_component_json(datadir, userdir,
+                                            ensemble, stack, cpt,
+                                            revision)
+
+        # The mancode value in the JSON file is a boolean, but
+        # we want the actual integer value from the input. This
+        # is messy.
+        #
+        odata = original_component_data[key]
+        mancodes = set([o['mancode'] for o in odata])
+        man_codes = set([o['man_code'] for o in odata])
+
+        assert len(mancodes) == 1, mancodes
+        assert len(man_codes) == 1, man_codes
+
+        mancode = mancodes.pop()
+        man_code = man_codes.pop()
+
+        assert mancode == cptinfo['mancode']
+
+        assert 'man_code' not in cptinfo
+        cptinfo['man_code'] = man_code
+
+        cpts.append(cptinfo)
+
+        for mid in utils.get_user_setting(cptinfo, midkey):
+            assert mid != 0
+            if mid < 0:
+                continue
+
+            master_ids_new[mid].add(key)
 
     # read in the JSON for each master hull and ensure that it is
     # "done" (accepted, deleted, or manually modified).
@@ -301,17 +368,33 @@ def complete(datadir, userdir, ensemble,
     #
     # For each master check that if it is valid then it has
     # components; if it is deleted then ensure any components
-    # it has are marked as deleted.
+    # it has are removed from this master.
     #
     # [CHECK B]
+    #
+    # NOTE: any manually-modified hulls cause the script to error
+    #       out at this time (as this is not supported in the first
+    #       released version).
+    #
     mhulls_json = utils.read_mhulls_json(datadir, userdir, ensemble,
                                          revision)
     polys = {}
     for mid, cts in mhulls_json.items():
+
+        assert mid in master_ids_new, mid
+
         decision = utils.get_user_setting(cts, 'useraction')
 
         # polygon information
         if decision == 'manual':
+
+            # This is a temporary check, just for the first pass of sources
+            emsg = "Master_Id={} ".format(mid) + \
+                "has useraction={} ".format(decision) + \
+                "which is not supported in this version\n"
+            sys.stderr.write(emsg)
+            sys.exit(1)
+
             poly = utils.read_poly_from_json(userdir, ensemble,
                                              mid, revision)
             basestk = None
@@ -323,6 +406,7 @@ def complete(datadir, userdir, ensemble,
             poly = None
             basestk = None
 
+            # component deletion handled below
         else:
             raise RuntimeError("Unexpected " +
                                "decision={}".format(decision))
@@ -331,17 +415,51 @@ def complete(datadir, userdir, ensemble,
 
         if decision == 'delete':
 
+            del master_ids_new[mid]
+
+            # Could use master_ids_new[mid] to find the components,
+            # but would then have to loop through cpts anyway as do
+            # not have a better indexing system at this time.
+            #
             for cpt in cpts:
                 mids = utils.get_user_setting(cpt, midkey)
                 if mid not in mids:
                     continue
 
+                # Restrict the supported cases for now
+                if len(mids) != 1:
+                    sys.stderr.write("ERROR: component deletion from ambiguous match not supported for master={}\n".format(mid))
+                    sys.exit(1)
+
                 mids.remove(mid)
-                if len(mids) == 0:
+                nmids = len(mids)
+                if nmids == 0:
                     mids = [-1]
                     cpt['match_type'] = 'deleted'
 
+                elif nmids == 1:
+                    assert mids[0] > 0, mids
+
+                    # component is now unambiguously matches
+                    cpt['match_type'] = 'unambiguous'
+
                 cpt[midkey]['user'] = mids
+
+    # For the first round, ensure that the master ids from
+    # CHSVER=1 are either deleted or all accepted (that is,
+    # the components are all deleted or all accepted).
+    #
+    for mid1, cpts1 in master_ids_base.items():
+
+        # What is the decision for this master?
+        cts = mhulls_json[mid1]
+        decision = utils.get_user_setting(cts, 'useraction')
+
+        if decision == 'delete':
+            assert mid1 not in master_ids_new, mid1
+            continue
+
+        assert cpts1 == master_ids_new[mid1], mid1
 
     if not utils.have_directory_write_access(datadir):
         raise IOError("unable to write to {}".format(datadir))
@@ -361,27 +479,32 @@ def complete(datadir, userdir, ensemble,
                        creator=creator)
 
 
-def usage(progName):
-    sys.stderr.write("Usage: {} datadir userdir ".format(progName) +
-                     "ensemble\n")
-    sys.stderr.write("\n  datadir is the directory containing the ")
-    sys.stderr.write("mhull and image files.\n")
-    sys.stderr.write("  userdir is the directory from which the ")
-    sys.stderr.write("QA server is run.\n")
-    sys.stderr.write("  ensemble is the ensemble to review\n")
-    sys.stderr.write("\n")
-    sys.exit(1)
+help_str = "Mark an ensemble as done (ready for chs_finalize_ensemble)."
 
 
 if __name__ == "__main__":
 
-    nargs = len(sys.argv)
-    if nargs != 4:
-        usage(sys.argv[0])
+    import argparse
 
-    datadir = os.path.normpath(os.path.abspath(sys.argv[1]))
-    userdir = os.path.normpath(os.path.abspath(sys.argv[2]))
-    ensemble = sys.argv[3]
+    parser = argparse.ArgumentParser(description=help_str,
+                                     prog=sys.argv[0])
 
-    complete(datadir, userdir, ensemble,
+    parser.add_argument("datadir",
+                        help="The directory containing the mhull and image files")
+    parser.add_argument("userdir",
+                        help="The directory from which the QA server is run")
+    parser.add_argument("ensemble", type=str,
+                        help="The ensemble to complete")
+
+    parser.add_argument("--mrgsrc3dir",
+                        default="/data/L3/chs_master_match/input/mrgsrc3",
+                        help="The mrgsrc3 directory: default %(default)s")
+
+    args = parser.parse_args(sys.argv[1:])
+
+    datadir = os.path.normpath(os.path.abspath(args.datadir))
+    userdir = os.path.normpath(os.path.abspath(args.userdir))
+
+    complete(datadir, userdir, args.ensemble,
+             mrgsrc3dir=args.mrgsrc3dir,
              creator=sys.argv[0])

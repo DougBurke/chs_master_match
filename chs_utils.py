@@ -926,7 +926,7 @@ def read_master_hulls(chsfile, mrgsrc3dir):
         # man_code is a single-element array; convert to a scalar
         # (and add a check in case this ever changes)
         #
-        assert man_code.shape == (1,)
+        assert man_code.shape == (1,), man_code
         man_code = man_code[0]
 
         try:

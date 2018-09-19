@@ -8,6 +8,9 @@ Usage:
 
 Aim:
 
+At present it only supports 'accept' and 'reject'; 'manual' masters
+cause the script to error out.
+
 Check that the given ensemble has been through QA and is valid.
 If so, create a finalized mhull file.
 
@@ -190,6 +193,10 @@ def create_mhull(outfile, ensemble, revision, hullmd,
 
         status = utils.get_user_setting(mhull, 'useraction')
 
+        # This will have to be updated, but at present, when only
+        # supporting deletion or acceptance of the proposed hull,
+        # neither flag is set.
+        #
         # TODO: fix this
         man_match = False
         man_reg = False
@@ -389,6 +396,11 @@ def finalize(datadir, userdir, ensemble,
     # components; if it is deleted then it has no components.
     #
     # [CHECK B]
+    #
+    # NOTE: any manually-modified hulls cause the script to error
+    #       out at this time (as this is not supported in the first
+    #       released version).
+    #
     mhulls_json = utils.read_mhulls_json(datadir, userdir, ensemble,
                                          revision)
     polys = {}
@@ -397,6 +409,14 @@ def finalize(datadir, userdir, ensemble,
 
         # polygon information
         if decision == 'manual':
+
+            # This is a temporary check, just for the first pass of sources
+            emsg = "Master_Id={} ".format(mid) + \
+                "has useraction={} ".format(decision) + \
+                "which is not supported in this version\n"
+            sys.stderr.write(emsg)
+            sys.exit(1)
+
             poly = utils.read_poly_from_json(userdir, ensemble,
                                              mid, revision)
             basestk = None
@@ -419,7 +439,7 @@ def finalize(datadir, userdir, ensemble,
         for cpt in cpts:
             mids = utils.get_user_setting(cpt, midkey)
 
-            print("DBG: mid = {}  mids = {}".format(mid, mids))
+            # print("DBG: mid = {}  mids = {}".format(mid, mids))
 
             if mid in mids:
                 has_cpt = True
