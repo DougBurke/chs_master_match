@@ -39,7 +39,7 @@ def create_mhull(outfile, ensemble, revision, hullmd,
                  cpts, mhulls, polys,
                  mstzero=0,
                  compzero=0, creator=None):
-    """Create the final master hull file.
+    """Create the master hull file.
 
     Parameters
     ----------
@@ -190,9 +190,10 @@ def indicate_completed(datadir, ensemble, revision,
     if not os.path.isfile(infile):
         raise IOError("Unable to find {}".format(infile))
 
+    outdir = os.path.join(datadir, ensemble)
     outname = utils.make_field_name_json(ensemble,
                                          revision=revision)
-    outfile = os.path.join(datadir, ensemble, outname)
+    outfile = os.path.join(outdir, outname)
     if os.path.isfile(outfile):
         raise IOError("Status=done file already exists: {}".format(outfile))
 
@@ -218,6 +219,9 @@ def complete(datadir, userdir, ensemble,
     the CHSVER=1 version accepted. It does not YET support
     modifying the hull or re-generating the master hull from
     a subset of the original components.
+
+    It also generates the component-level JSON data for the
+    new revision.
 
     Parameters
     ----------
@@ -465,18 +469,57 @@ def complete(datadir, userdir, ensemble,
     if not utils.have_directory_write_access(datadir):
         raise IOError("unable to write to {}".format(datadir))
 
-    finished_revision = revision + 1
-    outname = utils.make_mhull_name(ensemble, finished_revision)
-    outfile = os.path.join(datadir, ensemble, outname)
+    completed_revision = revision + 1
+
+    outname = utils.make_mhull_name(ensemble, completed_revision)
+    outdir = os.path.join(datadir, ensemble)
+    outfile = os.path.join(outdir, outname)
     if os.path.exists(outfile):
         raise IOError("Output file exists: {}".format(outfile))
 
-    create_mhull(outfile, ensemble, finished_revision,
+    create_mhull(outfile, ensemble, completed_revision,
                  hullmd,
                  cpts, mhulls_json, polys,
                  creator=creator)
 
-    indicate_completed(datadir, ensemble, finished_revision,
+    # write out a JSON file for each component; do this after the
+    # hull so that we can change the contents of cpts (the revision
+    # keyword).
+    #
+    # Note that user/proposed values need to get converted back to
+    # a single setting.
+    #
+    old_revstr = '{:03d}'.format(revision)
+    new_revstr = '{:03d}'.format(completed_revision)
+    for cptinfo in cpts:
+        assert cptinfo['revision'] == old_revstr, cptinfo
+        cptinfo['revision'] = new_revstr
+
+        for k, v in cptinfo.items():
+            # if v is a dictionary then it should have user/proposed
+            # fields, so do not need to handle KeyError here, just a
+            # TypeError (except that integers can be numpy integers,
+            # which respond with an IndexError instead)
+            #
+            # It would be better to trigger on the field name, but
+            # that requires constant vigilance
+            #
+            try:
+                user = v['user']
+                proposed = v['proposed']
+            except (TypeError, IndexError):
+                continue
+
+            # repeated work here (i.e. get_user_setting does some
+            # of the work we've just done)
+            #
+            val = utils.get_user_setting(cptinfo, k)
+            cptinfo[k] = val
+
+        outfile = utils.save_component(datadir, cptinfo)
+        print("  {}".format(outfile))
+
+    indicate_completed(datadir, ensemble, completed_revision,
                        creator=creator)
 
 

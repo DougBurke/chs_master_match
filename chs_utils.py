@@ -1662,12 +1662,19 @@ def save_master_poly(userdir, data):
 def save_component(userdir, data):
     """Save the stack-level hull details.
 
+    It will not over-write an existing file.
+
     Parameters
     ----------
     userdir : str
         The location for the user-stored data.
     data : dict
         The JSON dictionary containing the elements to write out.
+
+    Returns
+    -------
+    outfile : str
+        The name of the file that was created.
     """
 
     ensemble = data['ensemble']
@@ -1687,6 +1694,8 @@ def save_component(userdir, data):
                                        component,
                                        version)
     outfile = os.path.join(outdir, outname)
+    if os.path.exists(outfile):
+        raise IOError("Output file already exists: {}".format(outfile))
 
     # For now we do not copy over the other fields (that should be
     # read only) that are in the "original" version of this file
@@ -1703,6 +1712,8 @@ def save_component(userdir, data):
              }
     with open(outfile, 'w') as fh:
         fh.write(json.dumps(store))
+
+    return outfile
 
 
 # Crates helpers
