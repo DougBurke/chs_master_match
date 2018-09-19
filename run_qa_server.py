@@ -58,8 +58,6 @@ This was based on the skeleton code provided at
 
   https://gist.github.com/bradmontgomery/2219997
 
-It is Python 2.7 only at present.
-
 See also https://pymotw.com/2/BaseHTTPServer/
 
 """
@@ -73,7 +71,7 @@ import sys
 from six.moves.BaseHTTPServer import BaseHTTPRequestHandler, \
     HTTPServer
 
-import urlparse
+from six.moves.urllib.parse import urlparse
 
 import numpy as np
 
@@ -250,17 +248,20 @@ def get_data_summary(datadir, userdir):
     out = {'todos': [],
            'reviews': [],
            'completed': [],
+           # 'manual': [],
            'errors': [],
            'usernotes': '',
            'lastmodified': ''}
+
     for ens in state:
         if 'error' in ens:
             out['errors'].append(ens['ensemble'])
             continue
 
-        if ens['status']['user'] == 'completed':
+        status = utils.get_user_setting(ens, 'status')
+        if status == 'completed':
             key = 'completed'
-        elif ens['status']['user'] == 'review':
+        elif status == 'review':
             key = 'reviews'
         else:
             key = 'todos'
@@ -710,7 +711,11 @@ def create_master_hull_page(env,
         # mancode is also stored as np.uint8 which seems to be problematic
         # to serialize to JSON, so explicitly convert to a "normal" int
         #
+        # there's something similar going on with mrg3rev, but this time
+        # it appears to be being written out as np.int64.
+        #
         mancode = int(mancode)
+        mrgrev = int(mrgrev)
 
         # Note: dropping match type, which is probably okay
         try:
@@ -1082,7 +1087,7 @@ def send_file(obj, infile, mimetype, headers=None):
     """
 
     try:
-        cts = open(infile, 'r').read()
+        cts = open(infile, 'rb').read()
     except IOError as exc:
         utils.log("error reading [{}]: {}".format(infile, exc))
         # could send something more useful
@@ -1097,7 +1102,7 @@ def send_file(obj, infile, mimetype, headers=None):
             obj.send_header(k, v)
 
     obj.end_headers()
-    obj.wfile.write(cts)
+    obj.write_bytes(cts)
 
 
 def send_ensemble_hull_status(server,
@@ -1152,9 +1157,15 @@ class CHSHandler(BaseHTTPRequestHandler):
         self.send_header('Content-type', 'text/html')
         self.end_headers()
 
-    def write_contents(self, status, contents):
-        self._set_headers(status=status)
+    def write_bytes(self, contents, status=None):
+        if status is not None:
+            self._set_headers(status=status)
         self.wfile.write(contents)
+
+    def write_contents(self, contents, status=None):
+        # the encoding should be a no-op in Python 2.7
+        self.write_bytes(contents.encode('utf-8'),
+                         status=status)
 
     def do_GET(self):
 
@@ -1170,7 +1181,7 @@ class CHSHandler(BaseHTTPRequestHandler):
         datadir = context['datadir']
         userdir = context['userdir']
         env = context['environment']
-        upath = urlparse.urlparse(self.path)
+        upath = urlparse(self.path)
         path = upath.path
 
         # Strip the leading /
@@ -1179,7 +1190,7 @@ class CHSHandler(BaseHTTPRequestHandler):
 
         if path in ["", "index.html"]:
             status, cts = create_index_page(env, datadir)
-            self.write_contents(status, cts)
+            self.write_contents(cts, status=status)
             return
 
         if path.startswith('evt3/'):
@@ -1206,7 +1217,7 @@ class CHSHandler(BaseHTTPRequestHandler):
                                                          datadir,
                                                          userdir,
                                                          ensemble)
-                self.write_contents(status, cts)
+                self.write_contents(cts, status=status)
                 return
 
             elif ntoks == 3:
@@ -1229,7 +1240,7 @@ class CHSHandler(BaseHTTPRequestHandler):
                                                       ensemble,
                                                       revision,
                                                       masterid)
-                self.write_contents(status, cts)
+                self.write_contents(cts, status=status)
                 return
 
             else:
@@ -1243,7 +1254,7 @@ class CHSHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
 
-        upath = urlparse.urlparse(self.path)
+        upath = urlparse(self.path)
         path = upath.path
 
         # Strip the leading /
@@ -1290,8 +1301,7 @@ class CHSHandler(BaseHTTPRequestHandler):
             self.send_error(404)
             return
 
-        self._set_headers(200)
-        self.wfile.write("")
+        self.write_contents("", status=200)
 
     def send_as_json(self, cts):
         """Return cts as JSON data to the caller."""
@@ -1301,16 +1311,17 @@ class CHSHandler(BaseHTTPRequestHandler):
         except Exception as exc:
             utils.errlog("error converting JSON: {}".format(exc))
             self._set_headers(404)
-            self.wfile.write("<html><body><h1>ERROR</h1>")
-            self.wfile.write("<p>Unable to convert data to JSON.</p>")
-            self.wfile.write("<pre>{}</pre>".format(exc))
-            self.wfile.write("</body></html>")
+            emsg = "<html><body><h1>ERROR</h1>" + \
+                   "<p>Unable to convert data to JSON.</p>" + \
+                   "<pre>{}</pre>".format(exc) + \
+                   "</body></html>"
+            self.write_contents(emsg, status=404)
             return
 
         self.send_response(200)
         self.send_header('Content-type', 'application/json')
         self.end_headers()
-        self.wfile.write(rval)
+        self.write_contents(rval)
 
     def get_api(self, path):
         """Return the requested JSON data.
@@ -1487,8 +1498,8 @@ def serve(userdir, webdir, datadir, templatedir,
           xmdatdir='/data/L3/chs_master_match/input/xmdat3',
           evt3dir='/data/L3/chs_master_match/input/stkevt3'):
 
-    for dirname in [userdir, webdir, datadir, evt3dir, xmdatdir,
-                    templatedir]:
+    for dirname in [userdir, webdir, datadir, templatedir,
+                    evt3dir, xmdatdir]:
         if not os.path.isdir(dirname):
             raise IOError("Not a directory: {}".format(dirname))
 
@@ -1509,28 +1520,31 @@ def serve(userdir, webdir, datadir, templatedir,
     httpd.serve_forever()
 
 
-def usage(progName):
-    sys.stderr.write("Usage: {} datadir [port]\n".format(sys.argv[0]))
-    sys.stderr.write("\nport should be an integer and defaults to ")
-    sys.stderr.write("8070 if not given.\n")
-    sys.exit(1)
+help_str = "Run the CHS QA GUI (web pages)."
 
 
 if __name__ == "__main__":
 
-    nargs = len(sys.argv)
-    if nargs == 2:
-        port = 8070
-    elif nargs == 3:
-        try:
-            port = int(sys.argv[2])
-        except ValueError:
-            usage(sys.argv[0])
+    import argparse
 
-    else:
-        usage(sys.argv[0])
+    parser = argparse.ArgumentParser(description=help_str,
+                                     prog=sys.argv[0])
 
-    datadir = os.path.normpath(os.path.abspath(sys.argv[1]))
+    parser.add_argument("datadir",
+                        help="The directory containing the mhull and image files")
+    parser.add_argument("--port", type=int, default=8070,
+                        help="The port number to run the QA server on: default %(default)i")
+
+    parser.add_argument("--xmdatdir",
+                        default="/data/L3/chs_master_match/input/xmdat3",
+                        help="The xmdat3 directory: default %(default)s")
+    parser.add_argument("--evt3dir",
+                        default="/data/L3/chs_master_match/input/stkevt3",
+                        help="The stkevt3 directory: default %(default)s")
+
+    args = parser.parse_args(sys.argv[1:])
+
+    datadir = os.path.normpath(os.path.abspath(args.datadir))
 
     # The assets for the web server are obtained from the location
     # of the script (../webassets/).
@@ -1566,4 +1580,6 @@ if __name__ == "__main__":
 
     serve(userdir=userdir, webdir=webassets,
           datadir=datadir, templatedir=templatedir,
-          port=port)
+          port=args.port,
+          xmdatdir=args.xmdatdir,
+          evt3dir=args.evt3dir)
