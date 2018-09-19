@@ -1226,6 +1226,8 @@ def read_ensemble_hull_json(datadir, userdir,
     if ucts is None:
         return jcts
 
+    # Only override with the user values
+    #
     for key in userkeys:
         if key in ucts:
             jcts[key]['user'] = ucts[key]
@@ -1312,6 +1314,10 @@ hmmm, the JSON data has {"status": "todo", "stackmap": {"acisfJ1705367m403832_00
             log("multiple revision={} in {}".format(v, match))
             continue
 
+        # TODO: the following loop requires that the masters are always
+        #       numbered 1, ..., n (with no gaps).
+        #       Is this always guaranteed? Probably not.
+        #
         hulls = []
         for mid in range(1, jcts['nmasters'] + 1):
             hull = read_ensemble_hull_json(datadir, userdir,
@@ -2138,7 +2144,10 @@ def read_mhulls_json(datadir, userdir, ensemble, revision,
     -------
     mhulls : dict
         The keys are the master id values. The values are the JSON
-        contents as a dict.
+        contents as a dict. It is possible for this to be empty,
+        either because there are no masters left in this ensemble
+        (all have been deleted) or because there has been no
+        user decision for this revision.
     """
 
     hulls = {}
