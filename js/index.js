@@ -6,11 +6,15 @@
 
 var usernotes = "";
 
-// datatable handling could be made more generic
+// Since the data tables are handled very similarly, try and make the
+// handling somewhat generic.
 //
-var datatable_todo = undefined;
-var datatable_review = undefined;
-var datatable_completed = undefined;
+function tablefields() { return ['todo', 'review', 'completed']; }
+function mktablestruct() {
+    return {todo: undefined, review: undefined,
+            completed: undefined};
+}
+var datatable = mktablestruct();
 
 
 function plural(x) { if (x === 1) { return ""; } else { return "s"; } }
@@ -58,16 +62,19 @@ function add_ensemble_row(parent, ens) {
       any ensemble-level changes (i.e. user comment)
       and does not include changes made to each hull
       so it is probably confusing
+  ***/
 
+    /*
   td = document.createElement("td");
-  if (ens.lastmodified.user === null) {
+    if ((ens.lastmodified.user === null) ||
+        (ens.lastmodified.user === '')) {
     td.innerHTML = ens.lastmodified.proposed;
   } else {
     td.innerHTML = ens.lastmodified.user;
   }
   tr.appendChild(td);
-  ***/
-
+    */
+    
   parent.appendChild(tr);
 }
 
@@ -145,27 +152,17 @@ function saveDatatableSettings() {
   });
   
   // Perhaps should have just saved these info structures
-  const info_todo = datatable_todo.page.info();
-  const info_review = datatable_review.page.info();
-  const info_completed = datatable_completed.page.info();
+  const store = {length: mktablestruct(),
+                 page: mktablestruct(),
+                 order: mktablestruct()};
 
-  const order_todo = datatable_todo.order();
-  const order_review = datatable_review.order();
-  const order_completed = datatable_completed.order();
-
-  const store = {length: {todo: info_todo.length,
-			  review: info_review.length,
-			  completed: info_completed.length
-			 },
-		 page: {todo: info_todo.page,
-			review: info_review.page,
-			completed: info_completed.page
-		       },
-		 order: {todo: order_todo,
-			 review: order_review,
-			 completed: order_completed
-			}
-		};
+  for (var field of tablefields) {
+      const info = datatable[field].page.info();
+      store.length[field] = info.length;
+      store.page[field] = info.page,
+      store.order[field] = datatable[field].order();
+  }
+         
   httpRequest.open('POST', '/save/datatable');
   httpRequest.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
   httpRequest.send(JSON.stringify(store));
@@ -185,7 +182,7 @@ function updatePage(json) {
   const ntodos = json.todos.length;
   const nreviews = json.reviews.length;
   const ncompleted = json.completed.length;
-
+  
   document.getElementById("ntodos").innerHTML = nens(ntodos);
   document.getElementById("nreviews").innerHTML = nens(nreviews);
   document.getElementById("ncompleted").innerHTML = nens(ncompleted);
@@ -202,78 +199,71 @@ function updatePage(json) {
 
   // TODO: do we have to clear out these divs?
   var parent = document.getElementById("todo-table-body");
-  for (let i = 0; i < ntodos; i++) {
-    let ens = json.todos[i];
-
-    // TODO: need to work out the number of remaining hulls
-    //       or just do away with this concept (but would be nice
-    //       to know which ones you've worked on)
-    //
+  for (var ens of json.todos) {  
     add_ensemble_row(parent, ens);
   }
 
   parent = document.getElementById("review-table-body");
-  for (let i = 0; i < nreviews; i++) {
-    let ens = json.reviews[i];
+  for (var ens of json.reviews) {  
     add_ensemble_row(parent, ens);
   }
 
   parent = document.getElementById("completed-table-body");
-  for (let i = 0; i < ncompleted; i++) {
-    let ens = json.completed[i];
+  for (var ens of json.completed) {  
     add_ensemble_row(parent, ens);
   }
 
   // initialise the data tables
-  datatable_todo = $('#todo-table').DataTable();
-  datatable_review = $('#review-table').DataTable();
-  datatable_completed = $('#completed-table').DataTable();
+  datatable.todo = $('#todo-table').DataTable();
+  datatable.review = $('#review-table').DataTable();
+  datatable.completed = $('#completed-table').DataTable();
 
+  // this could be cleaned up
   if (json.datatable) {
     if (json.datatable.length) {
       if (json.datatable.length.todo) {
-        datatable_todo.page.len(json.datatable.length.todo);
+        datatable.todo.page.len(json.datatable.length.todo);
       }
       if (json.datatable.length.review) {
-        datatable_review.page.len(json.datatable.length.review);
+        datatable.review.page.len(json.datatable.length.review);
       }
       if (json.datatable.length.completed) {
-        datatable_completed.page.len(json.datatable.length.completed);
+        datatable.completed.page.len(json.datatable.length.completed);
       }
     }
 
     if (json.datatable.page) {
       if (json.datatable.page.todo) {
-        datatable_todo.page(json.datatable.page.todo);
+        datatable.todo.page(json.datatable.page.todo);
       }
       if (json.datatable.page.review) {
-        datatable_review.page(json.datatable.page.review);
+        datatable.review.page(json.datatable.page.review);
       }
       if (json.datatable.page.completed) {
-        datatable_completed.page(json.datatable.page.completed);
+        datatable.completed.page(json.datatable.page.completed);
       }
     }
 
     if (json.datatable.order) {
       if (json.datatable.order.todo) {
-        datatable_todo.order(json.datatable.order.todo);
+        datatable.todo.order(json.datatable.order.todo);
       }
       if (json.datatable.order.review) {
-        datatable_review.order(json.datatable.order.review);
+        datatable.review.order(json.datatable.order.review);
       }
       if (json.datatable.order.completed) {
-        datatable_completed.order(json.datatable.order.completed);
+        datatable.completed.order(json.datatable.order.completed);
       }
     }
 
     // not 100% convinced I have the draw argument correct here.
-    datatable_todo.draw(false);
-    datatable_review.draw(false);
-    datatable_completed.draw(false);
+    datatable.todo.draw(false);
+    datatable.review.draw(false);
+    datatable.completed.draw(false);
   }
 
   // Only set up the handler after setting the page length!
-  for (var tbl of [datatable_todo, datatable_review, datatable_completed]) {
+  for (var tbl of [datatable.todo, datatable.review, datatable.completed]) {
     for (var event of ['length', 'order', 'page']) {
       tbl.on(event, () => { saveDatatableSettings(); });
     }
