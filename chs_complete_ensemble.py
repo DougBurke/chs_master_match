@@ -163,8 +163,10 @@ def create_mhull(outfile, ensemble, revision, hullmd,
 
 
 def indicate_completed(datadir, ensemble, revision,
+                       nmasters,
+                       stackmap,
                        creator=None):
-    """Add the field JSON file saying it is done. Maybe.
+    """Add the field JSON file saying it is done.
 
     Parameters
     ----------
@@ -177,6 +179,13 @@ def indicate_completed(datadir, ensemble, revision,
     revision : int
         The revision number of the finalized mhull file (this
         file must exist in datadir).
+    nmasters : int
+        The number of master hulls.
+    stackmap : dict
+        Keys are stacks and values are integers, indicating the
+        number of that stack. This is a copy of the input and so
+        may include stacks that no-longer contain "valid" stack-level
+        hulls.
     creator : str, optional
         The name of the file (used in the usernotes field).
 
@@ -197,7 +206,10 @@ def indicate_completed(datadir, ensemble, revision,
     if os.path.isfile(outfile):
         raise IOError("Status=done file already exists: {}".format(outfile))
 
-    out = {'status': 'done',
+    out = {'name': ensemble,
+           'status': 'done',
+           'stackmap': stackmap,
+           'nmasters': nmasters,
            'lastmodified': time.asctime(),
            'revision': "{:03d}".format(int(revision))}
 
@@ -280,6 +292,13 @@ def complete(datadir, userdir, ensemble,
     vals1 = utils.read_master_hulls(mhulls[0][1], mrgsrc3dir)
     expected_components = []
     master_ids_base = defaultdict(set)
+
+    # Need a stack map (mapping between stack name and an integer
+    # counter) for writing out the field file. This could be read
+    # from the v001 field file (and may be) but for now use the
+    # ensemble map returned by read_master_hulls.
+    #
+    ensemble_map = vals1[2]['ensemblemap']
 
     original_component_data = defaultdict(list)
 
@@ -519,7 +538,9 @@ def complete(datadir, userdir, ensemble,
         outfile = utils.save_component(datadir, cptinfo)
         print("  {}".format(outfile))
 
+    nmasters = len(master_ids_new)
     indicate_completed(datadir, ensemble, completed_revision,
+                       nmasters, ensemble_map,
                        creator=creator)
 
 
