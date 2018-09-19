@@ -6,6 +6,7 @@ Usage:
 
    ./chs_complete_ensemble.py datadir userdir ensemble
        --mrgsrc3dir /path/to/mrgsrc3files/
+
 Aim:
 
 Indicate that this ensemble has been through QA and can be

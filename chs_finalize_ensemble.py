@@ -5,6 +5,7 @@
 Usage:
 
    ./chs_finalize_ensemble.py datadir userdir ensemble
+       --mrgsrc3dir /path/to/mrgsrc3files/
 
 Aim:
 
@@ -539,27 +540,32 @@ def finalize(datadir, userdir, ensemble,
     indicate_finalised(datadir, ensemble, finished_revision)
 
 
-def usage(progName):
-    sys.stderr.write("Usage: {} datadir userdir ".format(progName) +
-                     "ensemble\n")
-    sys.stderr.write("\n  datadir is the directory containing the ")
-    sys.stderr.write("mhull and image files.\n")
-    sys.stderr.write("  userdir is the directory from which the ")
-    sys.stderr.write("QA server is run.\n")
-    sys.stderr.write("  ensemble is the ensemble to review\n")
-    sys.stderr.write("\n")
-    sys.exit(1)
+help_str = "Mark an ensemble as finished (ready for source properties)."
 
 
 if __name__ == "__main__":
 
-    nargs = len(sys.argv)
-    if nargs != 4:
-        usage(sys.argv[0])
+    import argparse
 
-    datadir = os.path.normpath(os.path.abspath(sys.argv[1]))
-    userdir = os.path.normpath(os.path.abspath(sys.argv[2]))
-    ensemble = sys.argv[3]
+    parser = argparse.ArgumentParser(description=help_str,
+                                     prog=sys.argv[0])
 
-    finalize(datadir, userdir, ensemble,
+    parser.add_argument("datadir",
+                        help="The directory containing the mhull and image files")
+    parser.add_argument("userdir",
+                        help="The directory from which the QA server is run")
+    parser.add_argument("ensemble", type=str,
+                        help="The ensemble to complete")
+
+    parser.add_argument("--mrgsrc3dir",
+                        default="/data/L3/chs_master_match/input/mrgsrc3",
+                        help="The mrgsrc3 directory: default %(default)s")
+
+    args = parser.parse_args(sys.argv[1:])
+
+    datadir = os.path.normpath(os.path.abspath(args.datadir))
+    userdir = os.path.normpath(os.path.abspath(args.userdir))
+
+    finalize(datadir, userdir, args.ensemble,
+             mrgsrc3dir=args.mrgsrc3dir,
              creator=sys.argv[0])
