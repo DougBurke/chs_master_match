@@ -23,6 +23,13 @@ function nens(n) { return n.toString() + " ensemble" + plural(n); }
 
 function add_ensemble_row(parent, ens) {
 
+  // Add in 
+  //   ensemble name
+  //   number todo
+  //   number masters
+  //   number stacks
+  //   revision
+
   const tr = document.createElement("tr");
   // tr.className = "ensemble";  // remove styling just for now
 
@@ -75,6 +82,10 @@ function add_ensemble_row(parent, ens) {
   tr.appendChild(td);
     */
     
+  td = document.createElement("td");
+  td.innerHTML = ens.revision; // should already be a string
+  tr.appendChild(td);
+
   parent.appendChild(tr);
 }
 
