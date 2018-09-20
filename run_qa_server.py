@@ -1284,6 +1284,7 @@ class CHSHandler(BaseHTTPRequestHandler):
 
         clen = int(self.headers['Content-Length'])
         data = self.rfile.read(clen)
+        data = data.decode('utf-8')
         try:
             jcts = json.loads(data)
         except Exception as exc:
@@ -1462,7 +1463,7 @@ class CHSHandler(BaseHTTPRequestHandler):
 
         if use_gzip:
             try:
-                cts = open(infile, 'r').read()
+                cts = open(infile, 'rb').read()
             except IOError as exc:
                 utils.errlog("error reading [{}]: ".format(infile) +
                              "{}".format(exc))
