@@ -1704,11 +1704,11 @@ def save_master(userdir, data):
 
     # hard code npages if not set
     #
-    if 'nstacks' in store and 'npages' not in store:
+    if 'ncpts' in store and 'npages' not in store:
         pagesize = 9
-        nstacks = store['nstacks']
-        npages = nstacks // pagesize
-        if nstacks % pagesize > 0:
+        ncpts = store['ncpts']
+        npages = ncpts // pagesize
+        if ncpts % pagesize > 0:
             npages += 1
 
         store['npages'] = npages

@@ -29,6 +29,7 @@ same instrument (ACIS or HRC), since the UI for confirming the
 
 import json
 import os
+import shutil
 import sys
 import time
 
@@ -223,6 +224,54 @@ def indicate_completed(datadir, ensemble, revision,
 
     outfile = utils.save_ensemble(datadir, data)
     print("  {}".format(outfile))
+
+
+def copy_stack_component_regions(datadir, ensemble, stack, cpt,
+                                 revision):
+    """Copy over the stack .reg files for this revision.
+
+    This copies over the v001 version of the region file. It will need
+    to be updated to handle changes to the region file (if we ever
+    support changing a stack, rather than master) region file.
+
+    Parameters
+    ----------
+    datadir : str
+        The location of the data directory - that is the mhull
+        and original JSON files. It is also the location where
+        the completed mhull file is written.
+    ensemble : str
+        The ensemble name (e.g. 'ens0000100_001').
+    stack : str
+        The stack name.
+    cpt : int
+        The component number
+    revision : int
+        The new revision
+
+    Returns
+    -------
+    outfile : str
+        The name of the new file.
+
+    Notes
+    -----
+    Perhaps the stack component region file should not be versioned?
+    """
+
+    filename1 = utils.make_component_region_name(stack, cpt, 1)
+    filename = utils.make_component_region_name(stack, cpt, revision)
+
+    infile = os.path.join(datadir, ensemble, filename1)
+    if not os.path.exists(infile):
+        raise IOError("Missing: {}".format(infile))
+
+    outfile = os.path.join(datadir, ensemble, filename)
+    if os.path.exists(outfile):
+        raise IOError("Output file already exists: {}".format(outfile))
+
+    shutil.copy(infile, outfile)
+    return outfile
 
 
 def complete(datadir, userdir, ensemble,
@@ -588,6 +637,9 @@ def complete(datadir, userdir, ensemble,
     # Note that user/proposed values need to get converted back to
     # a single setting.
     #
+    # Also write out the stack-level region files (at present this
+    # is just a copy; and we may never change these files).
+    #
     for cptinfo in cpts:
         assert cptinfo['revision'] == old_revstr, cptinfo
         cptinfo['revision'] = new_revstr
@@ -614,6 +666,12 @@ def complete(datadir, userdir, ensemble,
             cptinfo[k] = val
 
         outfile = utils.save_component(datadir, cptinfo)
+        print("  {}".format(outfile))
+
+        outfile = copy_stack_component_regions(datadir, ensemble,
+                                               cptinfo['stack'],
+                                               cptinfo['component'],
+                                               completed_revision)
         print("  {}".format(outfile))
 
     nmasters = len(master_ids_new)
