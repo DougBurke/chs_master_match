@@ -8,11 +8,12 @@ labels?
 COMPLETED = "completed"
 DELETE = "delete"
 DONE = "done"
+FINALIZE = "finalize"
 QA = "qa"
 REVIEW = "review"
 TODO = "todo"
 UNKNOWN = "unknown"
 
 
-__all__ = ("COMPLETED", "DELETE", "DONE", "QA", "REVIEW", "TODO",
-           "UNKNOWN")
+__all__ = ("COMPLETED", "DELETE", "DONE", "FINALIZE", "QA",
+           "REVIEW", "TODO", "UNKNOWN")

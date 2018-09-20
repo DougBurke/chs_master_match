@@ -619,12 +619,19 @@ def complete(datadir, userdir, ensemble,
         #
         # Not sure what to do with "manual".
         #
+        # NOTE:
+        #   accept is changed to '' since we want the user to
+        #   review this setting for the next version.
+        #
+        if decision == 'accept':
+            decision = ''
+
         mstinfo = {'ensemble': ensemble,
                    'revision': new_revstr,
                    'masterid': mid1,
                    # 'nstacks': len(stacks), # is this needed?
                    'ncpts': ncpts,
-                   'usernotes': '',
+                   'usernotes': 'action cleared by chs_complete_ensemble',
                    'useraction': decision}
 
         outfile = utils.save_master(datadir, mstinfo)

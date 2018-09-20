@@ -133,18 +133,26 @@ function saveUserContent() {
 // *after* the server has indicated that the update
 // succeeded.
 //
+// The starting status should be 'todo'.
+// Once an ensemble has been through QA it gets marked as 'review' here.
+// This is then converted to status=completed by chs_complete_ensemble.
+// The next time through QA it gets marjed here as 'finalize'.
+// 
 function saveStatus() {
 
   // We should only be able to trigger this action if all the
   // hulls have been reviewed by the user. Is it worth adding
   // a check of this constraint here?
   //
-  // Accepted status values are 'todo', 'review', and 'completed'.
-  // At present completed is not a choice.
-  //
-  const newval = 'review';
-
   const info = state.versions[latestRevision];
+
+  let newval;
+  if (info.status.proposed === 'completed') {
+    newval = 'completed';
+  } else {
+    newval = 'review';
+  }
+
   if (newval === info.status.user) {
     return;
   }
@@ -250,6 +258,7 @@ function setVersion(revision) {
   const finish = document.getElementById('finish');
   const finished_review = document.getElementById('finished-review');
   const finished_completed = document.getElementById('finished-completed');
+  const finished_done = document.getElementById('finished-done');
   if (isLatest) {
 
     final.style.display = 'block';
@@ -257,6 +266,7 @@ function setVersion(revision) {
     if ((info.status.user === null) || (info.status.user === "todo")) {
 	finished_review.style.display = 'none';
 	finished_completed.style.display = 'none';
+	finished_done.style.display = 'none';
 
 	finish.disabled = !all_hulls_have_useraction;
 
@@ -274,22 +284,33 @@ function setVersion(revision) {
 
 	finished_review.style.display = 'inline';
 	finished_completed.style.display = 'none';
+	finished_done.style.display = 'none';
+
+    } else if (info.status.user === "completed") {
+	usersave.disabled = true;
+	finish.style.display = 'none';
+
+	finished_review.style.display = 'none';
+	finished_completed.style.display = 'inline';
+	finished_done.style.display = 'none';
 
     } else if (info.status.user === "done") {
 	usersave.disabled = true;
 	finish.style.display = 'none';
 
 	finished_review.style.display = 'none';
-	finished_completed.style.display = 'inline';
+	finished_completed.style.display = 'none';
+	finished_done.style.display = 'inline';
     } else {
-	console.log("WARNING: unexpected info.status.user=[" +
-		    info.status.user + "]");
+	alert("WARNING: unexpected info.status.user=[" +
+	      info.status.user + "]");
 
 	usersave.disabled = true;
 	finish.style.display = 'none';
 
 	finished_review.style.display = 'none';
 	finished_completed.style.display = 'none';
+	finished_done.style.display = 'none';
     }
 
   } else {

@@ -481,9 +481,7 @@ function addMasterHulls(display, stack, cptnum, is_qa) {
   const hullOpts = makeMasterOpts(tagName, is_qa);
 
   /* If this is a review page then don't let the user change the hull */
-  if (state.ensemble_status !== "todo") {
-    hullOpts.changeable = false;
-  }
+  hullOpts.changeable = ensemble_is_editable();
 
   // Note: the name will be changed later.
   const convexName = 'master';
@@ -1122,7 +1120,7 @@ function saveComponent(store, field, newval) {
 // Save user selections
 //
 // TODO: note that field and newval are not used, so why am I
-//       sending this is
+//       sending them in to the routine?
 //
 function saveUser(store, field, newval) {
   let httpRequest = new XMLHttpRequest();
@@ -1363,6 +1361,19 @@ function setupComponents() {
   }
 }
 
+// When do we consider the ensemble as "editable"? This is when
+// the state is "todo" (i.e. new) or "completed" (i.e. need to
+// review the settings).
+//
+function ensemble_is_editable() {
+  if (typeof state === "undefined") {
+      alert("Internal error: ensemble_is_editable called with no state");
+      return false;
+  }
+  const status = state.ensemble_status;
+  return (status === "todo") || (status === "completed");
+}
+
 // Set up the page
 
 function updatePage(json) {
@@ -1373,7 +1384,7 @@ function updatePage(json) {
   setupMasters();
 
   // Do we need a handler for region changes?
-  if (state.ensemble_status === "todo") {
+  if (ensemble_is_editable()) {
     if (JS9.Regions.opts.onchange !== null) {
       alert("Overwriting onchange handler!");
     }
@@ -1460,7 +1471,7 @@ function updatePage(json) {
   // TODO: should also worry about the revision value
   //
   const saveusercontent = document.getElementById("saveusercontent");
-  if (state.ensemble_status === "todo") {
+  if (ensemble_is_editable()) {
       saveusercontent
 	  .addEventListener("click",
 			    (e) => { saveUserContent(); });
@@ -1498,7 +1509,7 @@ function updatePage(json) {
   // set up the chosen value
   choice.value = ua;
 
-  if (state.ensemble_status === "todo") {
+  if (ensemble_is_editable()) {
       choice.addEventListener("change",
 			      (e) => { saveUserChoice(e.target.value); });
   } else {
