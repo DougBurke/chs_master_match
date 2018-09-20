@@ -950,21 +950,26 @@ def read_master_hulls(chsfile, mrgsrc3dir):
         # does not mean the values are different), so worry about
         # adding such a check if it becomes useful.
         #
-        store = {'master_id': mid,
+        # Explicitly convert from NumPy to Python types for some
+        # integers, since np.intXX types tend not to be JSON
+        # serializable.
+        #
+        store = {'master_id': int(mid),
                  'stack': stackid,
-                 'component': component - compzero,
+                 'component': int(component - compzero),
                  'key': key,
-                 'compzero': compzero,
+                 'compzero': int(compzero),
                  'eband': eband,
                  'likelihood': lhood,
 
                  # man_code is the actual code, mancode is a flag
                  # indicating whether 0 or not (not really needed but
                  # left in from amalgamating code)
-                 'man_code': man_code,
+                 #
+                 'man_code': int(man_code),
                  'mancode': man_code > 0,
 
-                 'mrg3rev': mrg3rev,
+                 'mrg3rev': int(mrg3rev),
                  'include_in_centroid': incl_cen,
                  'stksvdqa': svdqa,
                  'match_type': mtype,
@@ -988,7 +993,7 @@ def read_master_hulls(chsfile, mrgsrc3dir):
     for mid, status, base_stk, nvertex, eqpos in zs:
         assert mid not in hulllist
 
-        hulllist[mid] = {'master_id': mid,
+        hulllist[mid] = {'master_id': int(mid),
                          'status': status,
                          'base_stk': base_stk,
                          'eqpos': eqpos[:, :nvertex]}
@@ -1566,38 +1571,60 @@ def save_summary(userdir, data):
 def save_ensemble(userdir, data):
     """Save the ensemble-level details.
 
+    It will not over-write an existing file.
+
     Parameters
     ----------
     userdir : str
         The location for the user-stored data.
     data : dict
         The JSON dictionary containing the elements to write out.
+        Only a restricted subset is written out.
+
+    Returns
+    -------
+    outfile : str
+        The name of the file that was created.
     """
 
     ensemble = data['name']
     version = data['revision']  # this is in string form, 0 padded
 
     outdir = os.path.join(userdir, ensemble)
+    outname = make_field_name_json(ensemble, version)
+    outfile = os.path.join(outdir, outname)
+    if os.path.exists(outfile):
+        raise IOError("Output file already exists: {}".format(outfile))
+
     if os.path.exists(outdir):
         if not os.path.isdir(outdir):
             raise IOError("Exists but not a directory! {}".format(outdir))
     else:
         os.mkdir(outdir)
 
-    outname = make_field_name_json(ensemble, version)
-    outfile = os.path.join(outdir, outname)
-
     store = {"name": ensemble,
              "lastmodified": time.asctime(),
              "usernotes": data['usernotes'],
              "status": data['status'],
              "revision": version}
+
+    for key in ['stackmap', 'nmasters', 'nstacks']:
+        if key in data:
+            store[key] = data[key]
+
     with open(outfile, 'w') as fh:
         fh.write(json.dumps(store))
+
+    return outfile
 
 
 def save_master(userdir, data):
     """Save the master-level details.
+
+    It will not over-write an existing file. It is used for both the
+    proposed and user versions of the file, and at present not all
+    information is required for the user version (since it is meant
+    to overwrite some, but not all, of the proposed values).
 
     Parameters
     ----------
@@ -1605,30 +1632,61 @@ def save_master(userdir, data):
         The location for the user-stored data.
     data : dict
         The JSON dictionary containing the elements to write out.
+        Only a restricted subset is written out.
+
+    Returns
+    -------
+    outfile : str
+        The name of the file that was created.
     """
 
     ensemble = data['ensemble']
     version = data['revision']  # this is in string form, 0 padded
-    masterid = data['masterid']
+    masterid = int(data['masterid'])
 
     outdir = os.path.join(userdir, ensemble)
+    outname = make_hull_name_json(ensemble, masterid, version)
+    outfile = os.path.join(outdir, outname)
+    if os.path.exists(outfile):
+        raise IOError("Output file already exists: {}".format(outfile))
+
     if os.path.exists(outdir):
         if not os.path.isdir(outdir):
             raise IOError("Exists but not a directory! {}".format(outdir))
     else:
         os.mkdir(outdir)
 
-    outname = make_hull_name_json(ensemble, masterid, version)
-    outfile = os.path.join(outdir, outname)
-
     store = {"ensemble": ensemble,
-             "masterid": masterid,
-             "lastmodified": time.asctime(),
+             "masterid": "{:03d}".format(masterid), # is this sensible?
              "usernotes": data['usernotes'],
              "useraction": data['useraction'],
              "revision": version}
+
+    if 'lastmodified' in data:
+        store['lastmodified'] = data['lastmodified']
+    else:
+        store['lastmodified'] = time.asctime()
+
+    # do we ever want nstacks?
+    for key in ['ncpts', 'nstacks', 'npages', 'usernotes']:
+        if key in data:
+            store[key] = data[key]
+
+    # hard code npages if not set
+    #
+    if 'nstacks' in store and 'npages' not in store:
+        pagesize = 9
+        nstacks = store['nstacks']
+        npages = nstacks // pagesize
+        if nstacks % pagesize > 0:
+            npages += 1
+
+        store['npages'] = npages
+
     with open(outfile, 'w') as fh:
         fh.write(json.dumps(store))
+
+    return outfile
 
 
 def save_master_poly(userdir, data):
@@ -1689,12 +1747,6 @@ def save_component(userdir, data):
     component = data['component']
 
     outdir = os.path.join(userdir, ensemble)
-    if os.path.exists(outdir):
-        if not os.path.isdir(outdir):
-            raise IOError("Exists but not a directory! {}".format(outdir))
-    else:
-        os.mkdir(outdir)
-
     outname = make_component_name_json(ensemble,
                                        stack,
                                        component,
@@ -1702,6 +1754,12 @@ def save_component(userdir, data):
     outfile = os.path.join(outdir, outname)
     if os.path.exists(outfile):
         raise IOError("Output file already exists: {}".format(outfile))
+
+    if os.path.exists(outdir):
+        if not os.path.isdir(outdir):
+            raise IOError("Exists but not a directory! {}".format(outdir))
+    else:
+        os.mkdir(outdir)
 
     # For now we do not copy over the other fields (that should be
     # read only) that are in the "original" version of this file

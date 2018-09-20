@@ -270,18 +270,14 @@ def create_review_products(chsfile, outdir,
             action = ''
 
         ensdata = {'ensemble': ensemble,
-                   'masterid': "{:03d}".format(mid),
+                   'masterid': mid,
                    'revision': revstr,
                    'ncpts': len(hullmatch[mid]),
                    'npages': pinfo['npages'],
                    'useraction': action,
-                   'lastmodified': '',  # could add date string here
                    'usernotes': ''
                    }
-
-        filename = utils.make_hull_name_json(ensemble, mid, revision)
-        outfile = os.path.join(outdir, filename)
-        open(outfile, 'w').write(json.dumps(ensdata))
+        outfile = utils.save_master(outdir, ensdata)
         print("Created: {}".format(outfile))
 
 

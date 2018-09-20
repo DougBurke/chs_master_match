@@ -163,10 +163,12 @@ def create_mhull(outfile, ensemble, revision, hullmd,
 
 
 def indicate_completed(datadir, ensemble, revision,
-                       nmasters,
+                       nmasters, nstacks,
                        stackmap,
                        creator=None):
-    """Add the field JSON file saying it is done.
+    """Add the field JSON file saying it is completed.
+
+    This tells the UI that the ensemblke is ready for final review.
 
     Parameters
     ----------
@@ -181,6 +183,8 @@ def indicate_completed(datadir, ensemble, revision,
         file must exist in datadir).
     nmasters : int
         The number of master hulls.
+    nstacks : int
+        The number of stacks that contain a hull.
     stackmap : dict
         Keys are stacks and values are integers, indicating the
         number of that stack. This is a copy of the input and so
@@ -199,27 +203,20 @@ def indicate_completed(datadir, ensemble, revision,
     if not os.path.isfile(infile):
         raise IOError("Unable to find {}".format(infile))
 
-    outdir = os.path.join(datadir, ensemble)
-    outname = utils.make_field_name_json(ensemble,
-                                         revision=revision)
-    outfile = os.path.join(outdir, outname)
-    if os.path.isfile(outfile):
-        raise IOError("Status=done file already exists: {}".format(outfile))
-
-    out = {'name': ensemble,
-           'status': 'done',
-           'stackmap': stackmap,
-           'nmasters': nmasters,
-           'lastmodified': time.asctime(),
-           'revision': "{:03d}".format(int(revision))}
-
+    data = {'name': ensemble,
+            'revision': "{:03d}".format(int(revision)), # just in case
+            'status': 'done',
+            'stackmap': stackmap,
+            'nmasters': nmasters,
+            'nstacks': nstacks
+    }
     if creator is None:
-        out['usernotes'] = 'auto completed'
+        data['usernotes'] = 'auto completed'
     else:
-        out['usernotes'] = 'completed by {}'.format(creator)
+        data['usernotes'] = 'completed by {}'.format(creator)
 
-    with open(outfile, 'w') as fh:
-        fh.write(json.dumps(out))
+    outfile = utils.save_ensemble(datadir, data)
+    print("  {}".format(outfile))
 
 
 def complete(datadir, userdir, ensemble,
@@ -473,6 +470,10 @@ def complete(datadir, userdir, ensemble,
     # CHSVER=1 are either deleted or all accepted (that is,
     # the components are all deleted or all accepted).
     #
+    # This loop may have to change to reflect any added masters
+    # (see also the loop that calls utils.save_master below since
+    # it is over the same data).
+    #
     for mid1, cpts1 in master_ids_base.items():
 
         # What is the decision for this master?
@@ -489,6 +490,8 @@ def complete(datadir, userdir, ensemble,
         raise IOError("unable to write to {}".format(datadir))
 
     completed_revision = revision + 1
+    old_revstr = '{:03d}'.format(revision)
+    new_revstr = '{:03d}'.format(completed_revision)
 
     outname = utils.make_mhull_name(ensemble, completed_revision)
     outdir = os.path.join(datadir, ensemble)
@@ -501,6 +504,58 @@ def complete(datadir, userdir, ensemble,
                  cpts, mhulls_json, polys,
                  creator=creator)
 
+    # Write out the JSON file for each master hull. Need to loop
+    # over all masters (even deleted ones).
+    #
+    # At present the list of master ids is in master_ids_base,
+    # but this will change if we ever support the ability to
+    # add a master hull in the QA UI.
+    #
+    # Apparently mid1 is a string
+    #
+    for mid1 in master_ids_base.keys():
+
+        # I thought mid1 was already a Python int rather than a
+        # NumPy one, but apparently not, so make sure.
+        #
+        # This is needed since the JSON module can't serialize
+        # NumPy integers (or some of them, anyway).
+        #
+        mid1 = int(mid1)
+
+        # What is the decision for this master?
+        cts = mhulls_json[mid1]
+        decision = utils.get_user_setting(cts, 'useraction')
+
+        # We do not use master_ids_base[mid1] since it has not
+        # been updated.
+        #
+        cpts1 = master_ids_new[mid1]
+
+        ncpts = len(cpts1)
+
+        # How many stacks have hulls that contribute to this
+        # master?
+        #
+        # stacks = set([k[0] for k in cpts1])
+
+        # Decisions we want to store
+        #    delete
+        #    accept
+        #
+        # Not sure what to do with "manual".
+        #
+        mstinfo = {'ensemble': ensemble,
+                   'revision': new_revstr,
+                   'masterid': mid1,
+                   # 'nstacks': len(stacks), # is this needed?
+                   'ncpts': ncpts,
+                   'usernotes': '',
+                   'useraction': decision}
+
+        outfile = utils.save_master(datadir, mstinfo)
+        print("  {}".format(outfile))
+
     # write out a JSON file for each component; do this after the
     # hull so that we can change the contents of cpts (the revision
     # keyword).
@@ -508,8 +563,6 @@ def complete(datadir, userdir, ensemble,
     # Note that user/proposed values need to get converted back to
     # a single setting.
     #
-    old_revstr = '{:03d}'.format(revision)
-    new_revstr = '{:03d}'.format(completed_revision)
     for cptinfo in cpts:
         assert cptinfo['revision'] == old_revstr, cptinfo
         cptinfo['revision'] = new_revstr
@@ -539,8 +592,14 @@ def complete(datadir, userdir, ensemble,
         print("  {}".format(outfile))
 
     nmasters = len(master_ids_new)
+    stacks = set()
+    for cpts1 in master_ids_new.values():
+        for c in cpts1:
+            stacks.add(c[0])
+
+    nstacks = len(stacks)
     indicate_completed(datadir, ensemble, completed_revision,
-                       nmasters, ensemble_map,
+                       nmasters, nstacks, ensemble_map,
                        creator=creator)
 
 
