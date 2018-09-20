@@ -167,7 +167,7 @@ function saveDatatableSettings() {
                  page: mktablestruct(),
                  order: mktablestruct()};
 
-  for (var field of tablefields) {
+    for (var field of tablefields()) {
       const info = datatable[field].page.info();
       store.length[field] = info.length;
       store.page[field] = info.page,
