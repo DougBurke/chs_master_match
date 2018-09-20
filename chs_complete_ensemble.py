@@ -21,6 +21,10 @@ that the data matches up).
 At present it only supports 'accept' and 'reject'; 'manual' masters
 cause the script to error out.
 
+It also only handles ensembles where the hulls are detected on the
+same instrument (ACIS or HRC), since the UI for confirming the
+"include_in_centroid" case has not been exposed to the user.
+
 """
 
 import json
@@ -307,7 +311,25 @@ def complete(datadir, userdir, ensemble,
 
         assert mid not in master_ids_base
 
+        # enforce a consistent instrument for the components
+        # in a single master hull, as we do not handle
+        # include_in_centroid in the QA UI yet.
+        # (safety check, to be removed)
+        #
+        # It's okay to run on version 1 since it is not
+        # expected that the 18 cases where this happens
+        # is going to be analysed in the first round of work.
+        #
+        acis = False
+        hrc = False
+
         for cpt in cpts:
+
+            acis |= cpt['stack'].startswith('acis')
+            hrc |= cpt['stack'].startswith('hrc')
+            if acis and hrc:
+                raise ValueError("master found with both HRC and ACIS; currently unsupported")
+
             key = (cpt['stack'], cpt['component'])
             master_ids_base[mid].add(key)
             expected_components.append(key)
@@ -317,6 +339,9 @@ def complete(datadir, userdir, ensemble,
             # all the other fields are the same).
             #
             original_component_data[key].append(cpt)
+
+        if not acis and not hrc:
+            raise RuntimeError("Apparently found a master hull with no components!")
 
     # what is the ensemble status?
     status = utils.read_ensemble_status(datadir, userdir,
