@@ -19,7 +19,6 @@ import six
 import pycrates
 import region
 
-# from . import chs_utils as utils
 import chs_utils as utils
 
 from astropy.wcs import WCS
@@ -1154,11 +1153,18 @@ def draw_ensemble_outline(ensemble, mhulls, hulls, qas, fov3files,
     main_color = 'black'
 
     for i, hlist in enumerate(hulls):
+
         for stkhull in hlist:
             if stkhull['mancode']:
                 lstyle = 'dotted'
             else:
                 lstyle = 'solid'
+
+            # should this use chs_status.DELETE?
+            if stkhull['match_type'] == "deleted":
+                use_color = 'red'
+            else:
+                use_color = stack_color
 
             eqpos = stkhull['eqpos']
             ra = eqpos[0]
@@ -1167,7 +1173,7 @@ def draw_ensemble_outline(ensemble, mhulls, hulls, qas, fov3files,
             plt.plot(ra, dec, linewidth=1, linestyle=lstyle,
                      alpha=0.6,
                      transform=ax_trans,
-                     color=stack_color)
+                     color=use_color)
 
     # Now the master hulls; these are going to overwrite the stack-level
     # hulls for the majority of cases (single stack hull), so use a

@@ -955,8 +955,16 @@ def read_master_hulls(chsfile, mrgsrc3dir):
         # man_code is a single-element array; convert to a scalar
         # (and add a check in case this ever changes)
         #
-        assert man_code.shape == (1,), man_code
-        man_code = man_code[0]
+        # In subsequent versions it can be back to a scalar, so
+        # support this. This is because it gets written out as
+        # Int4 rather than Byte.
+        #
+        if man_code.shape == ():
+            pass
+        elif man_code.shape == (1,):
+            man_code = man_code[0]
+        else:
+            raise ValueError("man_code.shape = {}".format(man_code.shape))
 
         try:
             mrgsrc3data = mrgsrc3files[stackid]
