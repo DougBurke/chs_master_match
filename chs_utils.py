@@ -21,6 +21,8 @@ import region
 
 from coords.format import deg2ra, deg2dec
 
+import chs_status
+
 
 def have_directory_write_access(dirname):
     """Do we have write access to the given directory?
@@ -1414,7 +1416,7 @@ def read_ensemble_status(datadir, userdir, ensemble, revision):
 
     Returns
     -------
-    status : {'todo', 'review', 'done'}
+    status : {'todo', 'review', 'completed', 'delete', 'done', 'unknown'}
 
     """
 
@@ -1451,14 +1453,15 @@ def read_ensemble_status(datadir, userdir, ensemble, revision):
     if ans is not None and ans != not_present:
         return ans
 
+    # The following logic is not clear
     if ans is None:
         warn("status=None for ensemble " +
              "{} version {}".format(ensemble, revision))
-        return "unknown"
+        return chs_status.UNKNOWN
 
     errlog("no status for ensemble " +
            "{} version {}".format(ensemble, revision))
-    return "unknown"
+    return chs_status.UNKNOWN
 
 
 def read_component_hull_json(datadir, userdir, ensemble,
@@ -2108,7 +2111,7 @@ def create_mhull_file(ensemble, revision, outfile,
             #
             if eq is None:
                 status = hulllist['status'][i]
-                assert status == 'qa', status
+                assert status == chs_status.QA, status
                 continue
 
             assert eq.ndim == 2, eq.shape

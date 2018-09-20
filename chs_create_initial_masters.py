@@ -81,9 +81,11 @@ import numpy as np
 import pycrates
 import region
 
+import chs_status
 import chs_utils as utils
 import chs_identify_master_hulls as identify
 import chs_merge_hulls as merge
+
 
 NODATAFILE = "NOHULLS"
 
@@ -844,7 +846,7 @@ def process_ensemble(ensemblefile, ensemble, outdir,
                     revision=revision,
                     color=qa_color)
         else:
-            if outline['status'] != 'todo':
+            if outline['status'] != chs_status.TODO:
                 print("NOTE: status = {}".format(outline['status']))
 
             outfile = os.path.join(outdir,

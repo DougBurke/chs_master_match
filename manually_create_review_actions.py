@@ -19,6 +19,7 @@ import glob
 import os
 
 import chs_utils as utils
+import chs_status
 
 
 def find_ensembles(userdir):
@@ -101,7 +102,7 @@ def compare(datadir, userdir, ensemble):
     status = utils.read_ensemble_status(datadir, userdir, ensemble,
                                         revision)
 
-    if status != 'todo':
+    if status != chs_status.TODO:
         print("   - skipping as status={}".format(status))
         return False
 
@@ -121,7 +122,7 @@ def compare(datadir, userdir, ensemble):
     #
     data = {'name': ensemble,
             'revision': revstr,
-            'status': 'review',
+            'status': chs_status.REVIEW,
             'usernotes': 'The review status was auto-generated.'
             }
     utils.save_ensemble(userdir, data)

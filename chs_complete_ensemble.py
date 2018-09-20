@@ -37,6 +37,7 @@ from collections import defaultdict
 import numpy as np
 
 import chs_utils as utils
+import chs_status
 
 
 def create_mhull(outfile, ensemble, revision, hullmd,
@@ -137,7 +138,7 @@ def create_mhull(outfile, ensemble, revision, hullmd,
 
         mhull = mhulls[mid]
         status = utils.get_user_setting(mhull, 'useraction')
-        if status == 'delete':
+        if status == chs_status.DELETE:
             continue
 
         poly = polys[mid]
@@ -209,7 +210,8 @@ def indicate_completed(datadir, ensemble, revision,
 
     data = {'name': ensemble,
             'revision': "{:03d}".format(int(revision)), # just in case
-            'status': 'done',
+            # 'status': chs_status.DONE,
+            'status': chs_status.COMPLETED,
             'stackmap': stackmap,
             'nmasters': nmasters,
             'nstacks': nstacks
@@ -347,11 +349,9 @@ def complete(datadir, userdir, ensemble,
     status = utils.read_ensemble_status(datadir, userdir,
                                         ensemble, revision)
 
-    # This script converts review to done: it may get changed
-    # to require a "done" setting, which would be set by the
-    # UI, but currently we do not have this capability.
+    # This script converts 'review' to 'complete'.
     #
-    if status != 'review':
+    if status != chs_status.REVIEW:
         sys.stderr.write("ERROR: ensemble is marked " +
                          "status={}\n".format(status))
         sys.exit(1)
@@ -628,7 +628,7 @@ def complete(datadir, userdir, ensemble,
                        creator=creator)
 
 
-help_str = "Mark an ensemble as done (ready for chs_finalize_ensemble)."
+help_str = "Mark an ensemble as complete (ready for chs_finalize_ensemble)."
 
 
 if __name__ == "__main__":

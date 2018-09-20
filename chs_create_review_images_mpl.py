@@ -40,11 +40,13 @@ from collections import defaultdict
 
 import pycrates
 
+import chs_status
 import chs_utils as utils
 import chs_review_plots_mpl as plots
 
 # do this after import plots above, to set the backend
 from matplotlib import pyplot as plt
+
 
 help_str = "Create the review PNG files for CHS in this ensemble."
 
@@ -194,7 +196,7 @@ def create_review_products(chsfile, outdir,
                'nstacks': len(stacks),
                'ncpts': ncpts,
                'stackmap': ensemblemap,
-               'status': 'todo',
+               'status': chs_status.TODO,
                'lastmodified': '',  # could add date string here
                'usernotes': ''
                }

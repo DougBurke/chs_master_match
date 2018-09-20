@@ -85,6 +85,7 @@ except ImportError:
     sys.exit(1)
 
 import chs_utils as utils
+import chs_status
 
 
 class CHSServer(HTTPServer):
@@ -259,9 +260,9 @@ def get_data_summary(datadir, userdir):
             continue
 
         status = utils.get_user_setting(ens, 'status')
-        if status == 'completed':
+        if status == chs_status.COMPLETED:
             key = 'completed'
-        elif status == 'review':
+        elif status == chs_status.REVIEW:
             key = 'reviews'
         else:
             key = 'todos'
