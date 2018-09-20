@@ -863,10 +863,9 @@ def create_master_hull_page(env,
     for key in ebands_by_component.keys():
 
         stk, cpt = key
-        regfile = os.path.join(dname,
-                               'stack.{}.{}.v{}.reg'.format(stk,
-                                                            cpt,
-                                                            revstr))
+        regname = utils.make_component_region_name(stk, cpt,
+                                                   int(revstr))
+        regfile = os.path.join(dname, regname)
         regstr = read_ds9_region(regfile)
         if regstr is None:
             utils.log("missing stack region file {}".format(regfile))

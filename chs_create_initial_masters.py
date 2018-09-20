@@ -651,9 +651,10 @@ def ds9_header(ofh, color='green'):
 def write_stack_hull_as_ds9(hull, outdir, revision, color='green'):
     """Write the stack hull as a ds9 region file."""
 
-    rfile = 'stack.{}.{}.v{:03d}.reg'.format(hull['stack'],
+    rfile = utils.make_component_region_name(hull['stack'],
                                              hull['component'],
                                              revision)
+
     outfile = os.path.join(outdir, rfile)
     with open(outfile, 'w') as ofh:
         ds9_header(ofh, color=color)

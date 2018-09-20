@@ -472,6 +472,33 @@ def make_component_name_json(ensemble, stack, component, revision):
                                                   revision)
 
 
+def make_component_region_name(stack, component, revision):
+    """What is the reg file for this component?
+
+    Parameters
+    ----------
+    stack : str
+        The stack name.
+    component : int
+        The component number.
+    revision : int
+        The revision number.
+
+    Returns
+    -------
+    filename : str
+        The name of the region file (with no path).
+    """
+
+    # assert isinstance(revision, six.string_types)
+    revision = int(revision)
+
+    # Note: no zero-padding for the component number
+    return 'stack.{}.{}.v{:03d}.reg'.format(stack,
+                                            component,
+                                            revision)
+
+
 # I do have code to do this in a "nicer" way, in that it uses the
 # C API of the region library to make constructing and passing
 # around regions a lot nicer in Python. Alternatively, the
