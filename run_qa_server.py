@@ -250,6 +250,7 @@ def get_data_summary(datadir, userdir):
            'reviews': [],
            'completed': [],
            # 'manual': [],
+           'finished': [],
            'errors': [],
            'usernotes': '',
            'lastmodified': ''}
@@ -264,6 +265,8 @@ def get_data_summary(datadir, userdir):
             key = 'completed'
         elif status == chs_status.REVIEW:
             key = 'reviews'
+        elif status in [chs_status.DONE, chs_status.FINALIZE]:
+            key = 'finished'
         else:
             key = 'todos'
 
@@ -575,6 +578,7 @@ def create_master_hull_page(env,
         out += "</head><body><p>FOUND MULTIPLE COPIES - see Doug!</p></body></html>"
         return 404, out
 
+    # Should we special case if the hull is deleted?
     hull = hulls[0]
 
     # Read in the hull data for both all the masters and all the
@@ -835,7 +839,29 @@ def create_master_hull_page(env,
     # What stacks are we interested in? That is, which stacks contain
     # hulls that contribute to this master hull?
     #
-    cpts = hull_store[masterid]['components']
+    # Need to handle the case when the hull has been deleted.
+    #
+    useraction = utils.get_user_setting(hull, 'useraction')
+
+    if useraction == 'delete':
+        if masterid in hull_store:
+            utils.errlog("deleted hull {} in hull_store".format(masterid))
+            out = "<!DOCTYPE html><html><head><title>INTERNAL ERROR</title>"
+            out += "</head><body><p>Deleted hull is in hull_store"
+            out += "- see Doug!</p></body></html>"
+            return 404, out
+
+        cpts = {}
+    else:
+        if masterid not in hull_store:
+            utils.errlog("hull {} not in hull_store".format(masterid))
+            out = "<!DOCTYPE html><html><head><title>INTERNAL ERROR</title>"
+            out += "</head><body><p>hull is not in hull_store"
+            out += "- see Doug!</p></body></html>"
+            return 404, out
+
+        cpts = hull_store[masterid]['components']
+
     stks = list(cpts.keys())
 
     # order by the stack number
@@ -1005,7 +1031,7 @@ def create_master_hull_page(env,
 
     # Do we know the actual size here?
     #
-    if len(components) == 0:
+    if len(components) == 0 and useraction != 'delete':
         utils.log("filtered out all components!")
         out = "<!DOCTYPE html><html><head><title>INTERNAL ERROR</title>"
         out += "</head><body><p>Filtered out all components "
@@ -1016,24 +1042,48 @@ def create_master_hull_page(env,
     # setup code, but leave as is for now.
     #
     # TODO: send in the "new" data
-    return apply_template(env, 'masterhull.html',
-                          {'ensemble': ensemble,
-                           'revstr': revstr,
-                           'mid': mid,
-                           'masterid': masterid,
-                           'npages': hull['npages'],
-                           'ncpts': hull['ncpts'],
-                           'detectors': detectors,
-                           'components': components,
-                           'info': info,
-                           'hull': hull,
-                           'is_latest': is_latest,
-                           'ordered_stacks': ordered_stks,
-                           'enbands_cpt': enbands_cpt,
-                           'hull_store': hull_store,
-                           'stack_polys': stack_polys,
-                           'stack_psfs': psfs,
-                           'username': os.getlogin()})
+    # TODO: do we need to get this far with the deleted case, or
+    #       could we leave earlier?
+    #
+    if useraction == 'delete':
+        return apply_template(env, 'masterhull_deleted.html',
+                              {'ensemble': ensemble,
+                               'revstr': revstr,
+                               'mid': mid,
+                               'masterid': masterid,
+                               # 'npages': hull['npages'],
+                               # 'ncpts': hull['ncpts'],
+                               # 'detectors': detectors,
+                               # 'components': components,
+                               'info': info,
+                               # 'hull': hull,
+                               # 'is_latest': is_latest,
+                               # 'ordered_stacks': ordered_stks,
+                               # 'enbands_cpt': enbands_cpt,
+                               # 'hull_store': hull_store,
+                               # 'stack_polys': stack_polys,
+                               # 'stack_psfs': psfs,
+                               'username': os.getlogin()})
+
+    else:
+        return apply_template(env, 'masterhull.html',
+                              {'ensemble': ensemble,
+                               'revstr': revstr,
+                               'mid': mid,
+                               'masterid': masterid,
+                               'npages': hull['npages'],
+                               'ncpts': hull['ncpts'],
+                               'detectors': detectors,
+                               'components': components,
+                               'info': info,
+                               'hull': hull,
+                               'is_latest': is_latest,
+                               'ordered_stacks': ordered_stks,
+                               'enbands_cpt': enbands_cpt,
+                               'hull_store': hull_store,
+                               'stack_polys': stack_polys,
+                               'stack_psfs': psfs,
+                               'username': os.getlogin()})
 
 
 # Not sure what JS9 uses so cover some common types

@@ -9,10 +9,10 @@ var usernotes = "";
 // Since the data tables are handled very similarly, try and make the
 // handling somewhat generic.
 //
-function tablefields() { return ['todo', 'review', 'completed']; }
+function tablefields() { return ['todo', 'review', 'completed', 'finished']; }
 function mktablestruct() {
     return {todo: undefined, review: undefined,
-            completed: undefined};
+            completed: undefined, finished: undefined};
 }
 var datatable = mktablestruct();
 
@@ -190,13 +190,10 @@ function updatePage(json) {
       .addEventListener("click",
 			(e) => { saveUserContent(); });
 
-  const ntodos = json.todos.length;
-  const nreviews = json.reviews.length;
-  const ncompleted = json.completed.length;
-  
-  document.getElementById("ntodos").innerHTML = nens(ntodos);
-  document.getElementById("nreviews").innerHTML = nens(nreviews);
-  document.getElementById("ncompleted").innerHTML = nens(ncompleted);
+  document.getElementById("ntodos").innerHTML = nens(json.todos.length);
+  document.getElementById("nreviews").innerHTML = nens(json.reviews.length);
+  document.getElementById("ncompleted").innerHTML = nens(json.completed.length);
+  document.getElementById("nfinished").innerHTML = nens(json.finished.length);
 
   const errElem = document.getElementById("errors");
   const nerrors = json.errors.length;
@@ -206,7 +203,6 @@ function updatePage(json) {
       errElem.innerHTML = nens(nerrors) + " - " + json.errors.join(", ");
       errElem.style.color = "red";
   }
-
 
   // TODO: do we have to clear out these divs?
   var parent = document.getElementById("todo-table-body");
@@ -224,59 +220,46 @@ function updatePage(json) {
     add_ensemble_row(parent, ens);
   }
 
+  parent = document.getElementById("finished-table-body");
+  for (var ens of json.finished) {  
+    add_ensemble_row(parent, ens);
+  }
+
   // initialise the data tables
   datatable.todo = $('#todo-table').DataTable();
   datatable.review = $('#review-table').DataTable();
   datatable.completed = $('#completed-table').DataTable();
+  datatable.finished = $('#finished-table').DataTable();
 
-  // this could be cleaned up
   if (json.datatable) {
     if (json.datatable.length) {
-      if (json.datatable.length.todo) {
-        datatable.todo.page.len(json.datatable.length.todo);
-      }
-      if (json.datatable.length.review) {
-        datatable.review.page.len(json.datatable.length.review);
-      }
-      if (json.datatable.length.completed) {
-        datatable.completed.page.len(json.datatable.length.completed);
+      for (var n in json.datatable.length) {
+        datatable[n].page.len(json.datatable.length[n]);
       }
     }
 
     if (json.datatable.page) {
-      if (json.datatable.page.todo) {
-        datatable.todo.page(json.datatable.page.todo);
-      }
-      if (json.datatable.page.review) {
-        datatable.review.page(json.datatable.page.review);
-      }
-      if (json.datatable.page.completed) {
-        datatable.completed.page(json.datatable.page.completed);
+      for (var n in json.datatable.page) {
+        datatable[n].page(json.datatable.page[n]);
       }
     }
 
     if (json.datatable.order) {
-      if (json.datatable.order.todo) {
-        datatable.todo.order(json.datatable.order.todo);
-      }
-      if (json.datatable.order.review) {
-        datatable.review.order(json.datatable.order.review);
-      }
-      if (json.datatable.order.completed) {
-        datatable.completed.order(json.datatable.order.completed);
+      for (var n in json.datatable.order) {
+        datatable[n].order(json.datatable.order[n]);
       }
     }
 
     // not 100% convinced I have the draw argument correct here.
-    datatable.todo.draw(false);
-    datatable.review.draw(false);
-    datatable.completed.draw(false);
+    for (var n of tablefields()) {
+      datatable[n].draw(false);
+    }
   }
 
   // Only set up the handler after setting the page length!
-  for (var tbl of [datatable.todo, datatable.review, datatable.completed]) {
+    for (var n of tablefields()) {
     for (var event of ['length', 'order', 'page']) {
-      tbl.on(event, () => { saveDatatableSettings(); });
+      datatable[n].on(event, () => { saveDatatableSettings(); });
     }
   }
 }

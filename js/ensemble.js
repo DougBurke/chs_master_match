@@ -136,7 +136,7 @@ function saveUserContent() {
 // The starting status should be 'todo'.
 // Once an ensemble has been through QA it gets marked as 'review' here.
 // This is then converted to status=completed by chs_complete_ensemble.
-// The next time through QA it gets marjed here as 'finalize'.
+// The next time through QA it gets marked here as 'finalize'.
 // 
 function saveStatus() {
 
@@ -148,7 +148,7 @@ function saveStatus() {
 
   let newval;
   if (info.status.proposed === 'completed') {
-    newval = 'completed';
+    newval = 'finalize';
   } else {
     newval = 'review';
   }
@@ -205,6 +205,7 @@ function setVersion(revision) {
     td = document.createElement("td");
     var a = document.createElement("a");
     a.className = 'hullreview';
+    a.target = '_blank';  
     a.href = "/" + info.name + "/" + revision + "/" + m.masterid;
     if (isLatest) { a.innerHTML = "Review"; } else { a.innerHTML = "View"; }
     td.appendChild(a);
@@ -247,6 +248,8 @@ function setVersion(revision) {
   parent.src = "/img/" + info.name + "/field." + info.name +
                ".v" + revision + ".png";
 
+    console.log("DBG: info.status="); console.log(info.status);
+    
   // Is this an actionable page or not?
   // a) are we the latest version
   // b) do all the hulls have a user action?
@@ -254,22 +257,17 @@ function setVersion(revision) {
   //    This means that if you want to revert the "finished"
   //    label we need to do it manually
   // 
-  const final = document.getElementById('final');
-  const finish = document.getElementById('finish');
-  const finished_review = document.getElementById('finished-review');
-  const finished_completed = document.getElementById('finished-completed');
-  const finished_done = document.getElementById('finished-done');
+  const final_element = document.getElementById('final');
   if (isLatest) {
 
-    final.style.display = 'block';
+    final_element.style.display = 'block';
 
+    const finish = document.getElementById('finish');
+    let usertxt = '';
+      
     if ((info.status.user === null) || (info.status.user === "todo")) {
-	finished_review.style.display = 'none';
-	finished_completed.style.display = 'none';
-	finished_done.style.display = 'none';
-
+          
 	finish.disabled = !all_hulls_have_useraction;
-
 	finish.addEventListener("click", (e) => {
           saveStatus();
 	});
@@ -282,39 +280,39 @@ function setVersion(revision) {
 	usersave.disabled = true;
 	finish.style.display = 'none';
 
-	finished_review.style.display = 'inline';
-	finished_completed.style.display = 'none';
-	finished_done.style.display = 'none';
+        usertxt = "Ensemble has been marked 'for review'.";
 
     } else if (info.status.user === "completed") {
+        /* This should not happen */
 	usersave.disabled = true;
 	finish.style.display = 'none';
 
-	finished_review.style.display = 'none';
-	finished_completed.style.display = 'inline';
-	finished_done.style.display = 'none';
+        usertxt = "Ensemble has been marked as 'completed'.";
 
-    } else if (info.status.user === "done") {
+    } else if (info.status.user === "done" || info.status.user === "finalize") {
 	usersave.disabled = true;
 	finish.style.display = 'none';
 
-	finished_review.style.display = 'none';
-	finished_completed.style.display = 'none';
-	finished_done.style.display = 'inline';
+        usertxt = "Ensemble has been marked as 'done'.";
+
     } else {
 	alert("WARNING: unexpected info.status.user=[" +
 	      info.status.user + "]");
 
 	usersave.disabled = true;
 	finish.style.display = 'none';
-
-	finished_review.style.display = 'none';
-	finished_completed.style.display = 'none';
-	finished_done.style.display = 'none';
     }
 
+      const finished = document.getElementById('finished');
+      if (usertxt === '') {
+          finished.style.display = 'none';
+      } else {
+          finished.innerHTML = usertxt;
+          finished.style.display = 'inline';
+      }
+
   } else {
-    final.style.display = 'none';
+    final_element.style.display = 'none';
     usersave.disabled = true;
   }
 }

@@ -214,3 +214,8 @@ a.hulllink:hover {
 #colormappingselect {
   width: 10em;
 }
+
+.deletedhull {
+  font-size: 200%;
+  margin-left: 2em;
+}
