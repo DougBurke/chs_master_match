@@ -58,6 +58,9 @@ this scheme. I have asked Joe if this is a problem and it isn't.
 
 Conversions: TODO
 
+For the initial release, I am relying on the checks in
+chs_complete_ensemble.py; the two code bases need to use common code.
+
 """
 
 import os
@@ -65,8 +68,11 @@ import sys
 
 from collections import defaultdict
 
+import numpy as np
+
 import pycrates
 
+import chs_status
 import chs_utils as utils
 
 
@@ -170,8 +176,12 @@ def create_mhull(outfile, ensemble, revision, hullmd,
             hullmatch['component'].append(cpt['component'])
             hullmatch['match_type'].append(cpt['match_type'])
 
-            # TODO: why is area info missing in input?
-            hullmatch['area'].append(-1.0)
+            # Do not really care about the area any longer (and am not
+            # carrying the value around), so just use a terminal value.
+            #
+            # hullmatch['area'].append(cpt['area'])
+            hullmatch['area'].append(np.nan)
+
             hullmatch['eband'].append(cpt['eband'])
             hullmatch['likelihood'].append(cpt['likelihood'])
 
@@ -359,7 +369,7 @@ def finalize(datadir, userdir, ensemble,
                                         ensemble, revision)
 
     # [CHECK A]
-    if status != 'done':
+    if status != chs_status.FINALIZE:
         sys.stderr.write("ERROR: ensemble is marked " +
                          "status={}\n".format(status))
         sys.exit(1)
@@ -376,10 +386,36 @@ def finalize(datadir, userdir, ensemble,
     # [CHECK D] => as mentioned this is implicit rather than explicit
     #
     cpts = []
-    for stack, cpt in expected_components:
+    for key in expected_components:
+        stack, cpt = key
         cptinfo = utils.read_component_json(datadir, userdir,
                                             ensemble, stack, cpt,
                                             revision)
+        """ from chs_complete_ensemble
+
+        I don't seem to be getting the same data as for
+        chs_complete_ensemble.py, so need to work out what is going on
+
+        # The mancode value in the JSON file is a boolean, but
+        # we want the actual integer value from the input. This
+        # is messy.
+        #
+        odata = original_component_data[key]
+        mancodes = set([o['mancode'] for o in odata])
+        man_codes = set([o['man_code'] for o in odata])
+
+        assert len(mancodes) == 1, mancodes
+        assert len(man_codes) == 1, man_codes
+
+        mancode = mancodes.pop()
+        man_code = man_codes.pop()
+
+        assert mancode == cptinfo['mancode']
+
+        assert 'man_code' not in cptinfo
+        cptinfo['man_code'] = man_code
+        """
+
         cpts.append(cptinfo)
 
     # Choice of masterid vs master_id, so use a variable
