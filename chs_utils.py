@@ -1799,9 +1799,9 @@ def save_component(userdir, data):
     else:
         os.mkdir(outdir)
 
-    # For now we do not copy over the other fields (that should be
-    # read only) that are in the "original" version of this file
-    # (such as likelihood, band, mrg3rev).
+    # Could just leave this to copying over all the elements in data,
+    # but at least this way there's some documentation of important
+    # and required fields (could be checked in other ways though).
     #
     store = {"ensemble": ensemble,
              "stack": stack,
@@ -1812,6 +1812,19 @@ def save_component(userdir, data):
              "master_id": data['master_id'],
              "include_in_centroid": data['include_in_centroid']
              }
+
+    # Copy over the other elements
+    #
+    for k, v in data.items():
+        if k in store:
+            continue
+
+        if isinstance(v, dict):
+            # this repeats some of the work already done
+            v = get_user_setting(data, k)
+
+        store[k] = v
+
     with open(outfile, 'w') as fh:
         fh.write(json.dumps(store))
 
@@ -2373,7 +2386,12 @@ def read_component_json(datadir, userdir, ensemble,
     else:
         match_type = 'unambiguous'
 
-    assert 'match_type' not in jcts, str(jcts)
+    # I am not sure why I put this in here; I am deleting the check
+    # since it is not valid, but this may be due to poor information
+    # flow (i.e. allowing some data through in one of the files has
+    # lead to the retention of unwanted data?)
+    #
+    # assert 'match_type' not in jcts, str(jcts)
     jcts['match_type'] = match_type
     return jcts
 

@@ -149,10 +149,8 @@ def create_mhull(outfile, ensemble, revision, hullmd,
         # TODO: check that this hasn't already been done,
         #       because it should have
         #
-        #       Should this support delete?
-        #
         if len(mids) == 1:
-            assert cpt['match_type'] == 'unambiguous', cpt
+            assert cpt['match_type'] in ['unambiguous', 'deleted'], cpt
         else:
             assert cpt['match_type'] == 'ambiguous', cpt
 
@@ -179,14 +177,15 @@ def create_mhull(outfile, ensemble, revision, hullmd,
             # Do not really care about the area any longer (and am not
             # carrying the value around), so just use a terminal value.
             #
-            # hullmatch['area'].append(cpt['area'])
-            hullmatch['area'].append(np.nan)
+            try:
+                hullmatch['area'].append(cpt['area'])
+            except KeyError:
+                hullmatch['area'].append(np.nan)
 
             hullmatch['eband'].append(cpt['eband'])
             hullmatch['likelihood'].append(cpt['likelihood'])
 
-            # TODO: has man_code been corrected?
-            hullmatch['man_code'].append(cpt['mancode'])
+            hullmatch['man_code'].append(cpt['man_code'])
 
             hullmatch['mrg3rev'].append(cpt['mrg3rev'])
             hullmatch['include_in_centroid'].append(incl_in_centroid)
@@ -195,9 +194,16 @@ def create_mhull(outfile, ensemble, revision, hullmd,
     # Be explicit in the ordering here
     #
     hulllist = defaultdict(list)
+    nmasters = 0
     for mid in sorted(list(mhulls.keys())):
 
         mhull = mhulls[mid]
+        status = utils.get_user_setting(mhull, 'useraction')
+        if status == chs_status.DELETE:
+            continue
+
+        nmasters += 1
+
         poly = polys[mid]
         eqpos = poly['eqpos']
         nvertex = eqpos.shape[1]
@@ -237,15 +243,15 @@ def create_mhull(outfile, ensemble, revision, hullmd,
         bl = chk.get_crate(idx)
         assert bl.name == name
         if nrows is None:
-            assert bl.get_shape() == (0,)
+            assert bl.get_shape() == (0,), bl.get_shape()
         else:
-            assert bl.get_nrows() == nrows
+            assert bl.get_nrows() == nrows, (bl.get_nrows(), nrows)
 
     # TODO: is len(cpts) actually correct when we have ambiguous
     # matches?
     valid(1, 'PRIMARY')
     valid(2, 'HULLMATCH', len(cpts))
-    valid(3, 'HULLLIST', len(mhulls))
+    valid(3, 'HULLLIST', nmasters)
     chk = None
 
 
@@ -356,13 +362,43 @@ def finalize(datadir, userdir, ensemble,
     assert mhulls[0][0] == 1, mhulls[0][0]
     vals1 = utils.read_master_hulls(mhulls[0][1], mrgsrc3dir)
     expected_components = []
-    for cpts in vals1[0].values():
-        # hullmatch is a dict (key = masterid) where the
-        # values is a list of component info.
+
+    # Used to access some of the original data which should have
+    # been copied over but hasn't been
+    original_component_data = defaultdict(list)
+
+    for mid, cpts in vals1[0].items():
+
+        # enforce a consistent instrument for the components
+        # in a single master hull, as we do not handle
+        # include_in_centroid in the QA UI yet.
+        # (safety check, to be removed)
         #
+        # It's okay to run on version 1 since it is not
+        # expected that the 18 cases where this happens
+        # is going to be analysed in the first round of work.
+        #
+        acis = False
+        hrc = False
+
         for cpt in cpts:
-            expected_components.append((cpt['stack'],
-                                        cpt['component']))
+
+            acis |= cpt['stack'].startswith('acis')
+            hrc |= cpt['stack'].startswith('hrc')
+            if acis and hrc:
+                raise ValueError("master found with both HRC and ACIS; currently unsupported")
+
+            key = (cpt['stack'], cpt['component'])
+            expected_components.append(key)
+
+            # components can be associated with multiple masters,
+            # so store each entry in a list (this is wasteful since
+            # all the other fields are the same).
+            #
+            original_component_data[key].append(cpt)
+
+        if not acis and not hrc:
+            raise RuntimeError("Apparently found a master hull with no components!")
 
     # what is the ensemble status?
     status = utils.read_ensemble_status(datadir, userdir,
@@ -391,10 +427,12 @@ def finalize(datadir, userdir, ensemble,
         cptinfo = utils.read_component_json(datadir, userdir,
                                             ensemble, stack, cpt,
                                             revision)
-        """ from chs_complete_ensemble
 
-        I don't seem to be getting the same data as for
-        chs_complete_ensemble.py, so need to work out what is going on
+        # Do we need to add in the man_code value?
+        #
+        if 'man_code' in cptinfo:
+            cpts.append(cptinfo)
+            continue
 
         # The mancode value in the JSON file is a boolean, but
         # we want the actual integer value from the input. This
@@ -414,7 +452,6 @@ def finalize(datadir, userdir, ensemble,
 
         assert 'man_code' not in cptinfo
         cptinfo['man_code'] = man_code
-        """
 
         cpts.append(cptinfo)
 
