@@ -71,7 +71,7 @@ import sys
 from six.moves.BaseHTTPServer import BaseHTTPRequestHandler, \
     HTTPServer
 
-from six.moves.urllib.parse import urlparse
+from six.moves.urllib.parse import urlparse, parse_qs
 
 import numpy as np
 
@@ -947,39 +947,6 @@ def create_master_hull_page(env,
 
         store.append(shull)
 
-    # What are the point-source regions for the stacks?
-    #
-    psfs = {}
-    for stk in stks:
-        # hard code the name
-        infile = os.path.join(xmdatdir, stk,
-                              '{}N000_xmdat3.fits'.format(stk))
-
-        # No VFS in the file name so can do an existence check
-        if not os.path.exists(infile):
-            continue
-
-        try:
-            cr = pycrates.read_file(infile)
-        except IOError:
-            utils.errlog("Unable to open xmdat file: {}".format(infile))
-            continue
-
-        # ra,dec in decmal degrees
-        # r0,r1 in arcsec
-        # ang in degrees
-        #
-        psfs[stk] = []
-        for ra, dec, r0, r1, ang in zip(cr.ra.values,
-                                        cr.dec.values,
-                                        cr.psf_r0.values,
-                                        cr.psf_r1.values,
-                                        cr.psf_ang.values):
-            psfs[stk].append({'ra': ra, 'dec': dec,
-                              'r0': r0, 'r1': r1, 'angle': ang})
-
-        cr = None
-
     # Ensure data needed by the templates is present (this should
     # be cleaned up)
     #
@@ -1045,6 +1012,10 @@ def create_master_hull_page(env,
     # TODO: do we need to get this far with the deleted case, or
     #       could we leave earlier?
     #
+    # Now I have fixed the problem with deleted sources (a key of -1
+    # needs to be surrounded by qutes via tojson) I could probably
+    # rmeove _deleted.html, but leave in for now.
+    #
     if useraction == 'delete':
         return apply_template(env, 'masterhull_deleted.html',
                               {'ensemble': ensemble,
@@ -1066,6 +1037,7 @@ def create_master_hull_page(env,
                                'username': os.getlogin()})
 
     else:
+
         return apply_template(env, 'masterhull.html',
                               {'ensemble': ensemble,
                                'revstr': revstr,
@@ -1081,8 +1053,6 @@ def create_master_hull_page(env,
                                'ordered_stacks': ordered_stks,
                                'enbands_cpt': enbands_cpt,
                                'hull_store': hull_store,
-                               'stack_polys': stack_polys,
-                               'stack_psfs': psfs,
                                'username': os.getlogin()})
 
 
@@ -1230,6 +1200,7 @@ class CHSHandler(BaseHTTPRequestHandler):
         context = self.server.context
         datadir = context['datadir']
         userdir = context['userdir']
+        xmdatdir = context['xmdatdir']
         env = context['environment']
         upath = urlparse(self.path)
         path = upath.path
@@ -1243,6 +1214,19 @@ class CHSHandler(BaseHTTPRequestHandler):
             self.write_contents(cts, status=status)
             return
 
+        if path == "psfs":
+            # psfs?stacks=comma-separated-list
+
+            query = parse_qs(upath.query)
+            if 'stacks' not in query:
+                utils.errlog("Missing stacks in query to " +
+                             "[{}]".format(path))
+                self.send_error(404)
+                return
+
+            self.get_psfs(xmdatdir, query['stacks'])
+            return
+
         if path.startswith('evt3/'):
             self.get_evt3(path[5:])
             return
@@ -1253,6 +1237,27 @@ class CHSHandler(BaseHTTPRequestHandler):
 
         if path.startswith('img/'):
             self.get_image(path[4:])
+            return
+
+        if path.startswith('polys/'):
+            # polys/ensemble/revision/masterid
+
+            toks = path[6:].split('/')
+            if len(toks) != 3 or not valid_ensemble(datadir, toks[0]):
+                utils.errlog("Invalid path {}".format(path))
+                self.send_error(404)
+
+            ensemble = toks[0]
+            try:
+                revision = int(toks[1])
+                masterid = int(toks[2])
+            except ValueError:
+                utils.errlog("Unable to parse revision/masterid " +
+                             "from [{}]".format(path))
+                self.send_error(404)
+                return
+
+            self.get_polys(datadir, ensemble, revision, masterid)
             return
 
         # Is this an ensemble directory?
@@ -1281,7 +1286,6 @@ class CHSHandler(BaseHTTPRequestHandler):
                     return
 
                 # At the moment use the same data directory
-                xmdatdir = context['xmdatdir']
                 status, cts = create_master_hull_page(env,
                                                       datadir,
                                                       userdir,
@@ -1297,6 +1301,7 @@ class CHSHandler(BaseHTTPRequestHandler):
                 utils.errlog("Invalid ensemble path " +
                              "[{}]".format(path))
                 self.send_error(404)
+                return
 
         # Look in the webassets directory for this file
         #
@@ -1542,6 +1547,171 @@ class CHSHandler(BaseHTTPRequestHandler):
 
             send_file(self, infile, 'application/fits',
                       headers=hdrs)
+
+    def get_psfs(self, xmdatdir, stacks):
+        """Return the PSF file for the given stacks as JSON.
+
+        Should this be part of /api/ensemble/revision/masterid call?
+        """
+
+        out = {}
+
+        for stack in stacks:
+            # hard code the name
+            infile = os.path.join(xmdatdir, stack,
+                                  '{}N000_xmdat3.fits'.format(stack))
+
+            # No VFS in the file name so can do an existence check
+            if not os.path.exists(infile):
+                self.send_as_json(None)
+                return
+
+            try:
+                cr = pycrates.read_file(infile)
+            except IOError:
+                utils.errlog("Unable to open xmdat file: {}".format(infile))
+                continue
+
+            # ra,dec in decmal degrees
+            # r0,r1 in arcsec
+            # ang in degrees
+            #
+            psfs = []
+            for ra, dec, r0, r1, ang in zip(cr.ra.values,
+                                            cr.dec.values,
+                                            cr.psf_r0.values,
+                                            cr.psf_r1.values,
+                                            cr.psf_ang.values):
+                psfs.append({'ra': ra, 'dec': dec,
+                             'r0': r0, 'r1': r1, 'angle': ang})
+
+            out[stack] = psfs
+            cr = None  # try and make sure memory is cleaned up
+
+        self.send_as_json(out)
+
+    def get_polys(self, datadir, ensemble, revision, masterid):
+        """Return the stack polygon file for the given stacks as JSON.
+
+        Should this be part of /api/ensemble/revision/masterid call?
+        There is an awful lot of repeated file input.
+        """
+
+        dname = os.path.join(datadir, ensemble)
+        revstr = '{:03d}'.format(revision)
+
+        hullfile = os.path.join(dname,
+                                utils.make_mhull_name(ensemble, revision))
+        infile = '{}[master_id={}]'.format(hullfile, masterid) + \
+                 '[cols stackid,component]'
+
+        try:
+            cr = pycrates.read_file(infile)
+        except IOError as exc:
+            utils.errlog("Unable to read mhull file {}: {}".format(infile, exc))
+            self.send_error(404)
+            return
+
+        nstks = cr.get_key_value('STKIDNUM')
+        if nstks is None:
+            utils.errlog("Missing STKIDNUM in {}".format(infile))
+            self.send_error(404)
+            return
+
+        stack_map = {}
+        for i in range(nstks):
+            key = "STKID{:03d}".format(i)
+            val = cr.get_key_value(key)
+            if val is None:
+                utils.errlog("Missing {} in {}".format(key, infile))
+                self.send_error(404)
+                return
+
+            stack_map[val] = i
+
+        cpts = []
+        for key in zip(cr.STACKID.values, cr.COMPONENT.values):
+            cpts.append(key)
+
+        cr = None
+
+        # What about the stack-level hull polygons?
+        #
+        # Note that we include the center of the polygon,
+        # calculated from its SKY coordinate values but converted
+        # to RA and Dec. I know I have this code somewhere, but
+        # "re-invent" it. Oh darn: at this point I don't easily
+        # have the SKY coordinates, so going to hack it with the
+        # equatorial coordinates (including a hack to deal with
+        # ra=0/360).
+        #
+        out = {}
+        for stk, cpt in cpts:
+
+            regname = utils.make_component_region_name(stk, cpt,
+                                                       int(revstr))
+            regfile = os.path.join(dname, regname)
+            regstr = read_ds9_region(regfile)
+            if regstr is None:
+                utils.log("missing stack region file {}".format(regfile))
+                self.send_error(404)
+                return
+
+            sra, sdec, slabel = regstr_to_coords(regstr)
+            if slabel is None:
+                # Use the stack number, not the full name, to save space
+                # on the screen, if available.
+                #
+                try:
+                    stklbl = "{:03d}".format(stack_map[stk])
+                except KeyError:
+                    # TODO: THIS SHOULD BE CONSIDERED AN ERROR
+                    stklbl = stk
+
+                slabel = '{}.{:02d}'.format(stklbl, cpt)
+
+            try:
+                store = out[stk]
+            except KeyError:
+                store = []
+                out[stk] = store
+
+            # guestimates crossover limits
+
+            sx = np.asarray(sra)
+            sy = np.asarray(sdec)
+            if (sx.min() < 20.0) and (sx.max() > 340):
+                s0 = 400
+            else:
+                s0 = 0
+
+            ra0, dec0 = utils.polygon_centroid(sx + s0, sy)
+            ra0 -= s0
+
+            shull = {'stack': stk, 'component': cpt,
+                     'label': slabel,
+                     'ra': sra, 'dec': sdec,
+                     'ra0': ra0, 'dec0': dec0,
+                     'regstr': regstr}
+
+            """ For now remove mancode from this dataset as not sure
+                if actually used
+
+            try:
+                shull['mancode'] = mancode_by_component[key]
+            except KeyError:
+                # this should not happen
+                utils.log("key is missing in mancode_by_component: " +
+                          "{}".format(key))
+                # pass
+
+            """
+
+            shull['mancode'] = None  # this should cause noticeable issues
+
+            store.append(shull)
+
+        self.send_as_json(out)
 
 
 def serve(userdir, webdir, datadir, templatedir,

@@ -29,10 +29,8 @@
 	mid: "{{ mid }}",
 	masterid: {{ masterid }},
         enbands_cpt: {{ enbands_cpt }},
-	regionstore: {masterhulls: {{ hull_store }},
-                      stackhulls: {{ stack_polys }},
-                      components: {{ components | tojson }},
-                      stackpsfs: {{ stack_psfs }}},
+	regionstore: {masterhulls: {{ hull_store | tojson }},
+                      components: {{ components | tojson }}},
 	npages: {{ npages }} });'>
 
     <div id='infobar'>
@@ -62,9 +60,9 @@
 {% if is_latest %}
         <select required='true' id='choice' class='button'>
           <option value=''></option>
-	  <option value='accept'>Accept</value>
-	  <option value='delete'>Delete Master</value>
-	  <option value='manual'>Manual</value>
+	  <option value='accept'>Accept</option>
+	  <option value='delete'>Delete Master</option>
+	  <option value='manual'>Manual</option>
         </select>
 {% else %}
         <p id='chosen'></p>

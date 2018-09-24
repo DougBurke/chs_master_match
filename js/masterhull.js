@@ -1374,6 +1374,103 @@ function ensemble_is_editable() {
   return (status === "todo") || (status === "completed");
 }
 
+// Load in the stack PSF data from the /psfs/ endpoint.
+// Fills in settings.regionstore.stackpsfs
+//
+function loadPSFs() {
+
+  const stacks = settings.regionstore.
+	masterhulls[settings.masterid].components;
+  const stklist = Object.keys(stacks).join(',');
+
+  let httpRequest = new XMLHttpRequest();
+  if (!httpRequest) {
+      alert("Unable to create a XMLHttpRequest!");
+      return;
+  }
+
+  // Add the spinner to the whole page
+  //
+  let body = document.getElementsByTagName("body")[0];
+  let spinner = new Spinner(spinopts);
+  spinner.spin(body);
+
+  httpRequest.addEventListener("load", function() {
+    updatePSFs(httpRequest.response);
+  });
+  httpRequest.addEventListener("error", function() {
+      alert("Unable to load PSF data!");
+  });
+  httpRequest.addEventListener("abort", function() {
+      alert("Unable to load PSF data!");
+  });
+  httpRequest.addEventListener("loadend", function() {
+      spinner.stop();
+  });
+
+  // Do I need to add a cache-busting identifier?
+  httpRequest.open('GET', '/psfs?stacks=' + stklist);
+  httpRequest.responseType = 'json';
+  httpRequest.send();
+
+}
+
+// The PSF data has been loaden. json should be a dictionary
+// with keys being the stack ids and the values a list of
+// dictionaries, one for each PSF.
+//
+function updatePSFs(json) {
+  settings.regionstore.stackpsfs = json;
+}
+
+// Load in the stack polygon data /polys/ endpoint.
+// Fills in settings.regionstore.stackhulls
+//
+function loadPolys() {
+
+  const stacks = settings.regionstore.
+	masterhulls[settings.masterid].components;
+  const stklist = Object.keys(stacks).join(',');
+
+  let httpRequest = new XMLHttpRequest();
+  if (!httpRequest) {
+      alert("Unable to create a XMLHttpRequest!");
+      return;
+  }
+
+  // Add the spinner to the whole page
+  //
+  let body = document.getElementsByTagName("body")[0];
+  let spinner = new Spinner(spinopts);
+  spinner.spin(body);
+
+  httpRequest.addEventListener("load", function() {
+    updatePolys(httpRequest.response);
+  });
+  httpRequest.addEventListener("error", function() {
+      alert("Unable to load PSF data!");
+  });
+  httpRequest.addEventListener("abort", function() {
+      alert("Unable to load PSF data!");
+  });
+  httpRequest.addEventListener("loadend", function() {
+      spinner.stop();
+  });
+
+  // Do I need to add a cache-busting identifier?
+  httpRequest.open('GET', '/polys/' +
+		   settings.ensemble + '/' +
+		   settings.revstr + '/' +
+		   settings.masterid);
+  httpRequest.responseType = 'json';
+  httpRequest.send();
+
+}
+
+function updatePolys(json) {
+  settings.regionstore.stackhulls = json;
+}
+
 // Set up the page
 
 function updatePage(json) {
@@ -1382,6 +1479,10 @@ function updatePage(json) {
 
   setupComponents();
   setupMasters();
+
+  // Can load in the PSFs and polygons now
+  loadPSFs();
+  loadPolys();
 
   // Do we need a handler for region changes?
   if (ensemble_is_editable()) {
