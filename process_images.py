@@ -18,14 +18,27 @@ import os
 from subprocess import CalledProcessError, check_output, STDOUT
 import sys
 
+import six
 
-def doit(indir):
+
+def doit(indir, mrgsrc3dir="", stkevt3dir="", stkfov3dir="",
+         xmdat3dir="", verbose=False):
     """Process the ensembles to create the review images.
 
     Parameters
     ----------
     indir : str
         Process indir/<ensemble>/master*fits.
+    mrgsrc3dir : str, optional
+        Passed through as the --mrgsrc3dir value if not empty.
+    stkevt3dir : str, optional
+        Passed through as the --stkevt3dir value if not empty.
+    stkfov3dir : str, optional
+        Passed through as the --stkfov3dir value if not empty.
+    xmdat3dir : str, optional
+        Passed through as the --xmdat3dir value if not empty.
+    verbose : bool, optional
+        If set then displays the command being run.
 
     """
 
@@ -56,11 +69,30 @@ def doit(indir):
 
         args = ['python', toolname, infile, outdir]
 
+        for pval, pname in [(mrgsrc3dir, 'mrgsrc3dir'),
+                            (stkevt3dir, 'stkevt3dir'),
+                            (stkfov3dir, 'stkfov3dir'),
+                            (xmdat3dir, 'xmdat3dir'),
+                            ]:
+            if pval != "":
+                args.extend(["--{}".format(pname), pval])
+
+        if verbose:
+            # assume no protection/quoting needed
+            print(">> {}".format(" ".join(args)))
         try:
             out = check_output(args, stderr=STDOUT)
+            if not six.PY2:
+                out = out.decode('ascii')
+
         except CalledProcessError as exc:
             out = "ERROR: ensemble={}\n{}\n".format(ensemble, exc) + \
-                "\n" + exc.output
+                "\n"
+            if six.PY2:
+                out += exc.output
+            else:
+                out += exc.output.decode('ascii')
+
             sys.stdout.write("    FAILED\n")
             sys.stdout.flush()
             failed.append(ensemble)
@@ -101,6 +133,27 @@ if __name__ == "__main__":
     parser.add_argument("indir",
                         help="The input directory containing the ensembles")
 
+    parser.add_argument("--mrgsrc3dir",
+                        default="",
+                        help="The mrgsrc3 directory: default %(default)s")
+    parser.add_argument("--stkevt3dir",
+                        default="",
+                        help="The stkevt3 directory: default %(default)s")
+    parser.add_argument("--stkfov3dir",
+                        default="",
+                        help="The stkfov3 directory: default %(default)s")
+    parser.add_argument("--xmdatdir3",
+                        default="",
+                        help="The xmdat3 directory: default %(default)s")
+
+    parser.add_argument("--verbose", action="store_true",
+                        help="Displays the command being run")
+
     args = parser.parse_args(sys.argv[1:])
 
-    doit(args.indir)
+    doit(args.indir,
+         mrgsrc3dir=args.mrgsrc3dir,
+         stkevt3dir=args.stkevt3dir,
+         stkfov3dir=args.stkfov3dir,
+         xmdat3dir=args.xmdat3dir,
+         verbose=args.verbose)

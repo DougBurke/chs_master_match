@@ -1128,7 +1128,8 @@ def draw_ensemble_outline(ensemble, mhulls, hulls, qas, fov3files,
     _nextcolor = cycler(color=colors)()
 
     def nextcolor():
-        return _nextcolor.next()['color']
+        # return _nextcolor.next()['color']
+        return next(_nextcolor)['color']
 
     for fovfile in fov3files:
         # assume everything is a polygon

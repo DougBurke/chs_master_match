@@ -42,6 +42,8 @@ import os
 from subprocess import CalledProcessError, check_output, STDOUT
 import sys
 
+import six
+
 import stk
 
 
@@ -136,9 +138,17 @@ def doit(ensemblestk, stackmapfile, outdir,
 
         try:
             out = check_output(args, stderr=STDOUT)
+            if not six.PY2:
+                out = out.decode('ascii')
+
         except CalledProcessError as exc:
             out = "ERROR: ensemble={}\n{}\n".format(ensname, exc) + \
-                "\n" + exc.output
+                "\n"
+            if six.PY2:
+                out += exc.output
+            else:
+                out += exc.output.decode('ascii')
+
             sys.stdout.write("    FAILED\n")
             sys.stdout.flush()
             failed.append(ensname)
