@@ -774,10 +774,12 @@ def report_revision_difference(infile, revnum):
         return
     elif foundrev > revnum:
         sys.stderr.write("WARNING: expected revision " +
-                         "{} but found newer {}".format(revnum, foundrev))
+                         "{} but found newer ".format(revnum) +
+                         "{}\n".format(foundrev))
     else:
         sys.stderr.write("WARNING: using an *older* " +
-                         "revision {} than expected {}".format(foundrev, revnum))
+                         "revision {} than ".format(foundrev) +
+                         "expected {}\n".format(revnum))
 
 
 def _read_hulls_from_mrgsrc3(mrgsrc3):
@@ -1695,7 +1697,7 @@ def save_master(userdir, data):
         os.mkdir(outdir)
 
     store = {"ensemble": ensemble,
-             "masterid": "{:03d}".format(masterid), # is this sensible?
+             "masterid": "{:03d}".format(masterid),  # is this sensible?
              "usernotes": data['usernotes'],
              "useraction": data['useraction'],
              "revision": version}
