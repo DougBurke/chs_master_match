@@ -2159,7 +2159,7 @@ def create_mhull_file(ensemble, revision, outfile,
             #
             if eq is None:
                 status = hulllist['status'][i]
-                assert status == chs_status.QA, status
+                assert chs_status.is_qa(status), status
                 continue
 
             assert eq.ndim == 2, eq.shape
