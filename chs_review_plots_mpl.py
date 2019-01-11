@@ -873,7 +873,17 @@ def draw_hulls_and_images(master_hull,
         bname = hulldata[key]['eband']
 
         # Read in the date or grab it from the cache
+        # *UNLESS* it is a special case.
         #
+        if stack == 'acisfJ0534316p220052_001':
+            # The > 4Gb Crab event file.
+
+            ax = fig.add_subplot(nsize, nsize, plot_idx)
+            ax.text(0.5, 0.8, stack, ha='center')
+            ax.text(0.5, 0.3, 'No image as evt3 too large',
+                    ha='center')
+            continue
+
         iname = evt_name[key]
         if iname in evt_cache:
             cr = evt_cache[iname]
