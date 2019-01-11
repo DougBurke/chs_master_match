@@ -142,7 +142,7 @@ if __name__ == "__main__":
     parser.add_argument("--stkfov3dir",
                         default="",
                         help="The stkfov3 directory: default %(default)s")
-    parser.add_argument("--xmdatdir3",
+    parser.add_argument("--xmdat3dir",
                         default="",
                         help="The xmdat3 directory: default %(default)s")
 

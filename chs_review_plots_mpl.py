@@ -733,8 +733,21 @@ def draw_hulls_and_images(master_hull,
         raise IOError("The following event file(s) are " +
                       "missing:\n{}".format(emsg))
 
-    # could go for a more-adaptive scheme
-    if nhulls <= 9:
+    # Could go for a more-adaptive scheme
+    #
+    # Note that we special-case ensemble 0019200_001, which has
+    # ~ 35 stack-level hulls, and is also known as Cas A, to
+    # only have a 2 by 2 grid in the hope this saves enough
+    # memory. It isn't, because there are multiple evt files
+    # whose size is >~ 4 Gb for this particular source.
+    #
+    if ensemble == 'ens0019200_001':
+        print('Note: special case Cas A to 2 by 2 grid')
+        nsize = 2
+        nplots = nsize * nsize
+        npages = np.ceil(nhulls / (nplots * 1.0)).astype(np.int)
+
+    elif nhulls <= 9:
         nsize = np.ceil(np.sqrt(nhulls)).astype(np.int)
         nplots = nsize * nsize
         npages = 1
@@ -743,12 +756,12 @@ def draw_hulls_and_images(master_hull,
         nplots = nsize * nsize
         npages = np.ceil(nhulls / (nplots * 1.0)).astype(np.int)
 
-    def save_plot(pagenum):
+    def save_plot(escale, pagenum):
         """Create PNG output then destroy the window"""
 
         fmt = 'hull.{}.{:03d}.p{:03d}.v{:03d}.{}.png'
         outfile = fmt.format(ensemble, masterid, pagenum, revision,
-                             evtscale)
+                             escale)
         outfile = os.path.join(outdir, outfile)
 
         # Hide any warnings about square root of a negative number.
@@ -764,26 +777,12 @@ def draw_hulls_and_images(master_hull,
 
     title = "{} {:03d}".format(ensemble, masterid) + \
         "  #stacks={} #hulls= {}".format(nstacks, nhulls)
-    tcol = 'k'
     qatitle = None
-    qacol = 'r'
 
     if chs_status.is_qa(master_hull['status']):
         qatitle = master_hull['status'].upper()
 
     page_idx = 0
-    nplots_in_page = None
-    fig = None
-
-    lblsize = 12
-
-    def sqrtwrapper(vmin=None, vmax=None, clip=False):
-        return colors.PowerNorm(gamma=0.5, vmin=vmin, vmax=vmax,
-                                clip=clip)
-
-    colormap = {'log10': colors.LogNorm,
-                'sqrt': sqrtwrapper,
-                'none': colors.Normalize}
 
     # Are these correct?
     efilts = {'w': '',
@@ -834,252 +833,355 @@ def draw_hulls_and_images(master_hull,
         evt_count[iname] += 1
 
     evt_cache = {}
-
+    fig = None
+    axplot = None
     for hull_idx, shull in enumerate(stackhulls):
 
-        stack = shull['stack']
-        cpt = shull['component']
-        key = stack, cpt
-
-        if hull_idx % nplots == 0:
-            if page_idx > 0:
-                save_plot(page_idx)
-
-            page_idx += 1
-
-            if page_idx == npages:
-                nplots_in_page = nhulls - nplots * (page_idx - 1)
-            else:
-                nplots_in_page = nplots
-
-            fig = plt.figure(figsize=(8, 8))
-
-            # the only plot which we'll show axes for; it is intended
-            # to be the bottom-left plot of the display.
-            #
-            nrows = int((nplots_in_page - 1) // nsize)
-            axplot = nrows * nsize + 1
-
-        plot_idx = 1 + (hull_idx % nplots)
-
-        # pick the same scale when log scale is used
-        # maybe...
-        # if evtscale == 'log10':
-        #     iopts['threshold'] = [0, 2]
-        #
-
-        # What band to use?
-        #
-        bname = hulldata[key]['eband']
-
-        # Read in the date or grab it from the cache
-        # *UNLESS* it is a special case.
-        #
-        if stack == 'acisfJ0534316p220052_001':
-            # The > 4Gb Crab event file.
-
-            ax = fig.add_subplot(nsize, nsize, plot_idx)
-            ax.text(0.5, 0.8, stack, ha='center')
-            ax.text(0.5, 0.3, 'No image as evt3 too large',
-                    ha='center')
-            continue
-
-        iname = evt_name[key]
-        if iname in evt_cache:
-            cr = evt_cache[iname]
-
-            evt_count[key] -= 1
-            if evt_count[key] < 1:
-                del evt_cache[iname]
-
-        else:
-            try:
-                cr = pycrates.read_file(iname)
-            except IOError as e:
-                print("Unable to read {}".format(iname))
-                raise e
-
-            # cache the result if we re-use it
-            if evt_count[key] > 1:
-                evt_cache[iname] = cr
-
-        # could use the transfrom stored in the hullmap, but use
-        # the one read in from the image for now.
-        #
-        # tr = hullmap[stack][0]['transform']
-        tr = cr.get_transform('EQPOS')
-        tr2 = cr.get_transform('SKY')
-        assert tr2 is not None
-        wcs = tr2wcs(tr, tr2)
-
-        # Get the limits. Could use all images in the region,
-        # but this can be biased by counts in an unrelated
-        # source (have seen this).
-        #
-        # So try and filter to just the counts within the hull,
-        # using the SKY coordinate system.
-        #
-        hullbounds = hulldata[key]['pos']
-        pixvals = cr.get_image().values
-        ny, nx = pixvals.shape
-
-        # create the logical axis; center of bottom-left pixel is
-        # 1.0,1.0
-        #
-        # convert to sky coordinates
-        #
-        ly, lx = np.mgrid[1:ny + 1, 1:nx + 1]
-        cs_log = 1.0 * np.vstack((lx.flatten(), ly.flatten()))
-        cs_sky = tr2.apply([cs_log])[0]
-        sx = cs_sky[0]
-        sy = cs_sky[1]
-
-        # Ideally would restrict to just the counts within the
-        # hull (in case there's an unrelated bright source in the
-        # field of view). In this case may want to ensure vmin is 0
-        # just in csae the bounded hull has no low-value pixels in
-        # it (seems unlikely, but a reasonable precaution).
-        #
-        fpixvals = filter_image(pixvals.flatten(), sx, sy, hullbounds)
-
-        # One reason for not using the data to get the minimum is that
-        # it is possible for pixel values to overflow, which results
-        # in large negative values (unless we tell the DM to use a
-        # larger int for the pixel values, but we already have memory
-        # issues for some cases), and we do not want to include these
-        # in the scaling.
-        #
-        # vmin = np.nanmin(fpixvals)
-        vmin = 0
-        vmax = np.nanmax(fpixvals)
-
-        # It is possible for the filter to exclude all pixels if the
-        # convex hull is small enough (given the binning of the pixels)
-        # This has been seen with ens0000100_001.002, so in this case
-        # ignore the filter as a work around.
-        #
-        if vmax == 0:
-            vmax = np.nanmax(pixvals)
-
-        if evtscale == 'log10' and vmin <= 0:
-            # what to do with 0 elements?
-            # Assumption is that the images are count arrays
-            #
-            vmin = 1
-
-        cfunc = colormap[evtscale]
-        cscale = cfunc(vmin=vmin, vmax=vmax)
-
-        # Set up the plot data; note this uses the stack-specific
-        # transform.
-        #
-        ax = fig.add_subplot(nsize, nsize, plot_idx, projection=wcs)
-        ax.set_aspect('equal')
-        ax_trans = ax.get_transform('world')
-
-        if plot_idx == 1:
-            ptitle = title + '  Page {}/{}'.format(page_idx,
-                                                   npages)
-
-            fig.text(0.5, 0.96, ptitle, fontsize=16,
-                     color=tcol,
-                     horizontalalignment='center')
-
-            if qatitle is not None:
-                fig.text(0.5, 0.92, qatitle, fontsize=16,
-                         color=qacol,
-                         horizontalalignment='center')
-
-            if evtscale == 'none':
-                sclbl = 'linear'
-            else:
-                sclbl = evtscale
-            fig.text(0.95, 0.05, "scale={}".format(sclbl),
-                     fontsize=lblsize,
-                     horizontalalignment='right')
-
-        # This happened during development (should since have been
-        # fixed), but left in just in case.
-        #
-        if vmax <= vmin:
-            print("INTERNAL ERROR vmin={} vmax={}".format(vmin, vmax) +
-                  " file={}".format(iname))
-            plt.text(0.5, 0.5, "SKIPPING IMAGE",
-                     horizontalalignment="center",
-                     transform=ax.transAxes)
-            continue
-
-        # for log scaling can have values <= 0; these turn into
-        # transparent pixels, which is slightly distracting, so replace
-        # them with a minimum value. As the images are count images,
-        # then the minimum value should be log10(1) = 0
-        #
-        ivals = cr.get_image().values
-
-        if np.all(ivals < 0):
-            # have seen at least one strange case; add some hacky
-            # debugging
-            #
-            print("WARNING: all values are negative... " +
-                  "for file={}".format(iname))
-
-        if evtscale == 'log10':
-            # Should this really be ivals <= vmin as the condition?
-            # The input image is assumed to be a counts image (i.e.
-            # integer values), and we have vmin >= 1 for log10 scaling
-            # from above.
-            #
-            ivals[ivals <= 0] = vmin
-
-        # probably don't need vmin/vmax arguments, but as we have
-        # them (they were added whilst debugging a problem that turned
-        # out not to be a problem).
-        #
-        # Hide any warnings about square root of a negative number.
-        # The colorbar should be safe from these but moved in during
-        # testing (before realising that also needed to warn when
-        # creating the hardcopy version) and have decided to leave
-        # here.
-        #
-        oldsettings = np.seterr(all='ignore')
-        try:
-            plt.imshow(ivals, origin='lower', norm=cscale,
-                       vmin=vmin, vmax=vmax)
-            if colorbar:
-                plt.colorbar()
-
-        finally:
-            np.seterr(**oldsettings)
-
-        # Turn off autoscaling, so that we can draw on other hulls
-        # and not worry about them overlapping anything.
-        #
-        ax.autoscale(enable=False)
-
-        # Draw on any PSFs. Do this first so they appear under
-        # everything else.
-        #
-        draw_xmdat3(xmdat3map[stack], ax, ax_trans)
-
-        label_plot(stack, cpt, bname, ax,
-                   hullmap, ensemblemap)
-
-        if show_other_stack_hulls:
-            add_hulls_from_other_stacks(stack, stacks, hullmap, ax)
-
-        add_hulls(stack, cpt, hullmap,
-                  master_hull, qahulls, ax,
-                  master_color=master_color,
-                  qa_color=qa_color)
-
-        # clean up the plot.
-        #
-        labelize_plot(ax, plot_idx == axplot)
+        r = add_component_image(nhulls, nsize, npages,
+                                title, qatitle,
+                                fig, axplot, page_idx,
+                                hull_idx, nplots, evtscale,
+                                shull, hulldata, xmdat3map,
+                                hullmap, ensemblemap, stacks,
+                                master_hull, qahulls,
+                                save_plot,
+                                evt_name, evt_count, evt_cache,
+                                master_color=master_color,
+                                qa_color=qa_color,
+                                show_other_stack_hulls=show_other_stack_hulls,
+                                colorbar=colorbar)
+        fig, axplot, page_idx = r
 
     # Don't forget to save the last page.
-    save_plot(page_idx)
+    save_plot(evtscale, page_idx)
     assert page_idx == npages
     return {'npages': npages}
+
+
+def add_component_image(nhulls, nsize, npages,
+                        title, qatitle,
+                        fig, axplot, page_idx,
+                        hull_idx, nplots, evtscale,
+                        shull, hulldata, xmdat3map, hullmap,
+                        ensemblemap, stacks, master_hull, qahulls,
+                        save_plot,
+                        evt_name, evt_count, evt_cache,
+                        master_color='gold',
+                        qa_color='cyan',
+                        show_other_stack_hulls=False,
+                        colorbar=True):
+    """Add the image to the plot area, creating new plot if required.
+
+    This is a mess as I am trying to quickly break up some messy code
+    and there is a lot of inforamtion being passed around.
+
+    Parameters
+    ----------
+    nhulls : int
+        The number of component-level hulls to draw.
+    nsize : int
+        The number of plots along each axis in a page.
+    npages : int
+        The number of pages for this master hull.
+    title : str
+        The lead for the page title.
+    qatitle : str or None
+        The lead for the page title if a QA case.
+    fig : Figure or None
+        The current figure
+    axplot : int
+        The plot number in which axes labels are shown.
+    page_idx : int
+        The current page number (starting at 0).
+    hull_idx : int
+        The counter for the hull (starting at 0).
+    nplots : int
+        The number of plots per page.
+    evtscale : str
+        The scaling used for the images
+    shull : dict
+        Has keys 'stack' and 'component'.
+    hulldata : dict
+    xmdat3map : dict
+    hullmap : dict
+        The stack-level hull data, stored by the stack id. The values
+        are those returned by read_hulls_from_mrgsrc3.
+    ensemblemap
+    stacks
+    master_hull
+    qahulls
+
+    save_plot : func_ref
+        The routine to save the page: takes the event scale and
+        page number.
+
+    show_other_stack_hulls : bool, optional
+        Should the hulls from other stacks be drawn on the image?
+    colorbar : bool, optional
+        Should each image have a color bar?
+
+    Returns
+    -------
+    fig , axplot, npage : Figure , int, int
+        The current figure, plot number to show axes, and page number.
+
+    """
+
+    lblsize = 12
+    tcol = 'k'
+    qacol = 'r'
+
+    stack = shull['stack']
+    cpt = shull['component']
+    key = stack, cpt
+
+    if hull_idx % nplots == 0:
+        # could check for 'fig is not None' but not sure it helps much
+        if page_idx > 0:
+            save_plot(evtscale, page_idx)
+
+        page_idx += 1
+
+        if page_idx == npages:
+            nplots_in_page = nhulls - nplots * (page_idx - 1)
+        else:
+            nplots_in_page = nplots
+
+        fig = plt.figure(figsize=(8, 8))
+
+        # the only plot which we'll show axes for; it is intended
+        # to be the bottom-left plot of the display.
+        #
+        nrows = int((nplots_in_page - 1) // nsize)
+        axplot = nrows * nsize + 1
+
+    plot_idx = 1 + (hull_idx % nplots)
+
+    # pick the same scale when log scale is used
+    # maybe...
+    # if evtscale == 'log10':
+    #     iopts['threshold'] = [0, 2]
+    #
+
+    # What band to use?
+    #
+    bname = hulldata[key]['eband']
+
+    # Read in the date or grab it from the cache
+    # *UNLESS* it is a special case.
+    #
+    if stack in ['acisfJ0534316p220052_001',
+                 'acisfJ2323390p585033_001',
+                 'acisfJ2323335p585100_001']:
+        # The >~ 4Gb Crab or Cen A event files.
+        print(" - skipping large file {}".format(stack))
+
+        ax = fig.add_subplot(nsize, nsize, plot_idx)
+        ax.text(0.5, 0.8, stack, ha='center')
+        ax.text(0.5, 0.3, 'No image as evt3 too large',
+                ha='center')
+        return fig, axplot, page_idx
+
+    iname = evt_name[key]
+    if iname in evt_cache:
+        cr = evt_cache[iname]
+
+        evt_count[key] -= 1
+        if evt_count[key] < 1:
+            del evt_cache[iname]
+
+    else:
+        try:
+            cr = pycrates.read_file(iname)
+        except IOError as e:
+            print("Unable to read {}".format(iname))
+            raise e
+
+        # cache the result if we re-use it
+        if evt_count[key] > 1:
+            evt_cache[iname] = cr
+
+    # could use the transfrom stored in the hullmap, but use
+    # the one read in from the image for now.
+    #
+    # tr = hullmap[stack][0]['transform']
+    tr = cr.get_transform('EQPOS')
+    tr2 = cr.get_transform('SKY')
+    assert tr2 is not None
+    wcs = tr2wcs(tr, tr2)
+
+    # Get the limits. Could use all images in the region,
+    # but this can be biased by counts in an unrelated
+    # source (have seen this).
+    #
+    # So try and filter to just the counts within the hull,
+    # using the SKY coordinate system.
+    #
+    hullbounds = hulldata[key]['pos']
+    pixvals = cr.get_image().values
+    ny, nx = pixvals.shape
+
+    # create the logical axis; center of bottom-left pixel is
+    # 1.0,1.0
+    #
+    # convert to sky coordinates
+    #
+    ly, lx = np.mgrid[1:ny + 1, 1:nx + 1]
+    cs_log = 1.0 * np.vstack((lx.flatten(), ly.flatten()))
+    cs_sky = tr2.apply([cs_log])[0]
+    sx = cs_sky[0]
+    sy = cs_sky[1]
+
+    # Ideally would restrict to just the counts within the
+    # hull (in case there's an unrelated bright source in the
+    # field of view). In this case may want to ensure vmin is 0
+    # just in csae the bounded hull has no low-value pixels in
+    # it (seems unlikely, but a reasonable precaution).
+    #
+    fpixvals = filter_image(pixvals.flatten(), sx, sy, hullbounds)
+
+    # One reason for not using the data to get the minimum is that
+    # it is possible for pixel values to overflow, which results
+    # in large negative values (unless we tell the DM to use a
+    # larger int for the pixel values, but we already have memory
+    # issues for some cases), and we do not want to include these
+    # in the scaling.
+    #
+    # vmin = np.nanmin(fpixvals)
+    vmin = 0
+    vmax = np.nanmax(fpixvals)
+
+    # It is possible for the filter to exclude all pixels if the
+    # convex hull is small enough (given the binning of the pixels)
+    # This has been seen with ens0000100_001.002, so in this case
+    # ignore the filter as a work around.
+    #
+    if vmax == 0:
+        vmax = np.nanmax(pixvals)
+
+    if evtscale == 'log10' and vmin <= 0:
+        # what to do with 0 elements?
+        # Assumption is that the images are count arrays
+        #
+        vmin = 1
+
+    def sqrtwrapper(vmin=None, vmax=None, clip=False):
+        return colors.PowerNorm(gamma=0.5, vmin=vmin, vmax=vmax,
+                                clip=clip)
+
+    colormap = {'log10': colors.LogNorm,
+                'sqrt': sqrtwrapper,
+                'none': colors.Normalize}
+
+    cfunc = colormap[evtscale]
+    cscale = cfunc(vmin=vmin, vmax=vmax)
+
+    # Set up the plot data; note this uses the stack-specific
+    # transform.
+    #
+    ax = fig.add_subplot(nsize, nsize, plot_idx, projection=wcs)
+    ax.set_aspect('equal')
+    ax_trans = ax.get_transform('world')
+
+    if plot_idx == 1:
+        ptitle = title + '  Page {}/{}'.format(page_idx,
+                                               npages)
+
+        fig.text(0.5, 0.96, ptitle, fontsize=16,
+                 color=tcol,
+                 horizontalalignment='center')
+
+        if qatitle is not None:
+            fig.text(0.5, 0.92, qatitle, fontsize=16,
+                     color=qacol,
+                     horizontalalignment='center')
+
+        if evtscale == 'none':
+            sclbl = 'linear'
+        else:
+            sclbl = evtscale
+        fig.text(0.95, 0.05, "scale={}".format(sclbl),
+                 fontsize=lblsize,
+                 horizontalalignment='right')
+
+    # This happened during development (should since have been
+    # fixed), but left in just in case.
+    #
+    if vmax <= vmin:
+        print("INTERNAL ERROR vmin={} vmax={}".format(vmin, vmax) +
+              " file={}".format(iname))
+        plt.text(0.5, 0.5, "SKIPPING IMAGE",
+                 horizontalalignment="center",
+                 transform=ax.transAxes)
+        return fig, axplot, page_idx
+
+    # for log scaling can have values <= 0; these turn into
+    # transparent pixels, which is slightly distracting, so replace
+    # them with a minimum value. As the images are count images,
+    # then the minimum value should be log10(1) = 0
+    #
+    ivals = cr.get_image().values
+
+    if np.all(ivals < 0):
+        # have seen at least one strange case; add some hacky
+        # debugging
+        #
+        print("WARNING: all values are negative... " +
+              "for file={}".format(iname))
+
+    if evtscale == 'log10':
+        # Should this really be ivals <= vmin as the condition?
+        # The input image is assumed to be a counts image (i.e.
+        # integer values), and we have vmin >= 1 for log10 scaling
+        # from above.
+        #
+        ivals[ivals <= 0] = vmin
+
+    # probably don't need vmin/vmax arguments, but as we have
+    # them (they were added whilst debugging a problem that turned
+    # out not to be a problem).
+    #
+    # Hide any warnings about square root of a negative number.
+    # The colorbar should be safe from these but moved in during
+    # testing (before realising that also needed to warn when
+    # creating the hardcopy version) and have decided to leave
+    # here.
+    #
+    oldsettings = np.seterr(all='ignore')
+    try:
+        plt.imshow(ivals, origin='lower', norm=cscale,
+                   vmin=vmin, vmax=vmax)
+        if colorbar:
+            plt.colorbar()
+
+    finally:
+        np.seterr(**oldsettings)
+
+    # Turn off autoscaling, so that we can draw on other hulls
+    # and not worry about them overlapping anything.
+    #
+    ax.autoscale(enable=False)
+
+    # Draw on any PSFs. Do this first so they appear under
+    # everything else.
+    #
+    draw_xmdat3(xmdat3map[stack], ax, ax_trans)
+
+    label_plot(stack, cpt, bname, ax,
+               hullmap, ensemblemap)
+
+    if show_other_stack_hulls:
+        add_hulls_from_other_stacks(stack, stacks, hullmap, ax)
+
+    add_hulls(stack, cpt, hullmap,
+              master_hull, qahulls, ax,
+              master_color=master_color,
+              qa_color=qa_color)
+
+    # clean up the plot.
+    #
+    labelize_plot(ax, plot_idx == axplot)
+    return fig, axplot, page_idx
 
 
 def draw_ensemble_outline(ensemble, mhulls, hulls, qas, fov3files,
