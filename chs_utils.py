@@ -785,6 +785,8 @@ def report_revision_difference(infile, revnum):
 def _read_hulls_from_mrgsrc3(mrgsrc3):
     """Return the HULL info.
 
+    Only reads in hulls with status=0.
+
     Parameters
     ----------
     mrgsrc3 : str
@@ -802,7 +804,14 @@ def _read_hulls_from_mrgsrc3(mrgsrc3):
     Notes
     -----
     This used to be for external code, but has since been moved into
-    read_master_hulls.
+    read_master_hulls. This duplicates some of the code in
+    chs_create_initial_masters.read_hulls, but for now the two are
+    kept separate since there is confusion over the mancode/man_code
+    and band/eband field names.
+
+    Since there are times when a MEXTSRC block can be missing the
+    EQSRC transform, use the transform from onr of the other blocks
+    *if needed*. This complicates the code.
     """
 
     infile = "{}[MEXTSRC][status=0]".format(mrgsrc3)
@@ -814,7 +823,21 @@ def _read_hulls_from_mrgsrc3(mrgsrc3):
     stack = cr.get_key_value('STACK_ID')
     assert stack is not None
 
-    tr = cr.get_transform('EQSRC').copy()
+    try:
+        tr = cr.get_transform('EQSRC').copy()
+        eqvals = cr.get_column('EQSRC').values
+    except ValueError as ve:
+        if str(ve) != "Column 'EQSRC' does not exist.":
+            raise ve
+
+        print("*** NOTE: mrgsrc3 file for {} is missing EQSRC".format(stack))
+
+        infile2 = "{}[MPNTSRC][cols POS]".format(mrgsrc3)
+        cr2 = pycrates.read_file(infile2)
+        tr = cr2.get_transform('EQSRC').copy()
+
+        posvals = cr.get_column('POS').values.copy()
+        eqvals = tr.apply(posvals)
 
     # The manual code is converted from a bit to a simple value
     # (not in a way that encodes the flag settings). Treat as
@@ -824,7 +847,7 @@ def _read_hulls_from_mrgsrc3(mrgsrc3):
              cr.EBAND.values,
              cr.LIKELIHOOD.values,
              cr.POS.values,
-             cr.get_column('EQSRC').values,
+             eqvals,
              cr.MAN_CODE.values.sum(axis=1)
              )
 

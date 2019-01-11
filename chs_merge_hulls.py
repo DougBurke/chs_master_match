@@ -822,6 +822,12 @@ def read_hull(stkid, cpt, indir):
         separation from the "center" of the stack to
         the center of the hull in arcminutes.
 
+    Notes
+    -----
+    We have lots of pieces of code that read in this information, so
+    why do we need this one as well?
+
+    Note: complication since EQSRC transform can be missing.
     """
 
     mrg3file = utils.find_mrgsrc3(stkid, indir)
@@ -832,8 +838,23 @@ def read_hull(stkid, cpt, indir):
         raise IOError("No valid hull for {} {}".format(stkid, cpt))
 
     pos = cr.POS.values.copy()[0]
-    eqsrc = cr.get_column('eqsrc').values.copy()[0]
-    tr = cr.get_transform('EQSRC').copy()
+
+    try:
+        eqsrc = cr.get_column('EQSRC').values.copy()[0]
+        tr = cr.get_transform('EQSRC').copy()
+    except ValueError as ve:
+        if str(ve) != "Column 'EQSRC' does not exist.":
+            raise ve
+
+        print("*** NOTE: mrgsrc3 file for {} is missing EQSRC".format(stkid))
+
+        # read from the MPNTSRC block
+        infile2 = "{}[MPNTSRC][cols POS]".format(mrg3file)
+        cr2 = pycrates.read_file(infile2)
+        tr = cr2.get_transform('EQSRC').copy()
+
+        posvals = cr.POS.values.copy()
+        eqsrc = tr.apply(posvals).copy()[0]
 
     # remove any non-finite values (assume same in POS and EQSRC,
     # and X/Y).

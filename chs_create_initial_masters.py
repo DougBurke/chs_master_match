@@ -168,6 +168,15 @@ def read_hulls(stack, mrgsrc3dir):
     IOError
         If the STACK_ID keyword in the MEXTSRC block of the mrgsrc3
         files does not match the stack argument.
+
+    Notes
+    -----
+    This should be combined with chs_utils._read_hulls_from_mrgsrc3
+    but that is left for later.
+
+    Since there are times when a MEXTSRC block can be missing the
+    EQSRC transform, use the transform from onr of the other blocks
+    *if needed*. This complicates the code.
     """
 
     mrgsrc3file = utils.find_mrgsrc3(stack, mrgsrc3dir)
@@ -186,6 +195,22 @@ def read_hulls(stack, mrgsrc3dir):
 
     try:
         transform = cr.get_transform('EQSRC').copy()
+        eqvals = cr.get_column('EQSRC').values.copy()
+
+    except ValueError as ve:
+        if str(ve) != "Column 'EQSRC' does not exist.":
+            raise ve
+
+        print("*** NOTE: mrgsrc3 file for {} is missing EQSRC".format(stack))
+
+        # read from the MPNTSRC block
+        infile2 = "{}[MPNTSRC][cols POS]".format(mrgsrc3file)
+        cr2 = pycrates.read_file(infile2)
+        transform = cr2.get_transform('EQSRC').copy()
+
+        posvals = cr.POS.values.copy()
+        eqvals = transform.apply(posvals).copy()
+
     except Exception as exc:
         raise IOError("Unable to get EQSRC from " +
                       "{}\n{}".format(infile, exc))
@@ -209,7 +234,7 @@ def read_hulls(stack, mrgsrc3dir):
                 cr.LIKELIHOOD.values.copy(),
                 cr.MAN_CODE.values.copy(),
                 cr.POS.values.copy(),
-                cr.get_column('EQSRC').values.copy()):
+                eqvals):
 
         pos = utils.validate_polygon(pos, report=True,
                                      label="{} {}".format(stack,
