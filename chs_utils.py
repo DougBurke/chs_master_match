@@ -2149,10 +2149,11 @@ def create_mhull_file(ensemble, revision, outfile,
     #
     nhulls = len(hulllist['nvertex'])
     if nhulls > 0:
-        nmax = np.asarray(hulllist['nvertex']).max()
-        assert nmax > 2, nmax
 
+        nmax = np.asarray(hulllist['nvertex']).max()
         eqpos = np.full((nhulls, 2, nmax), np.nan, dtype=np.float64)
+
+        any_non_qa = False
         for i, eq in enumerate(hulllist['eqpos']):
 
             # Should we not include the hull polygon for status=delete?
@@ -2167,6 +2168,11 @@ def create_mhull_file(ensemble, revision, outfile,
             assert eq.shape[1] <= nmax, (eq.shape, nmax)
 
             eqpos[i, :, :hulllist['nvertex'][i]] = eq
+            any_non_qa |= True
+
+        # The nmax check is not made if all hulls are QA cases
+        if any_non_qa:
+            assert nmax > 2, "Expected > 2 vertex but found {}".format(nmax)
 
     else:
         # Can we get array with just [] here or does it have
