@@ -20,6 +20,7 @@ import pycrates
 import region
 
 import chs_utils as utils
+import chs_status
 
 from astropy.wcs import WCS
 from astropy.io.fits import Header
@@ -546,7 +547,7 @@ def add_hulls(stack, cpt, hullmap, master_hull, qahulls, axes,
     # they do not obscure them (for cases when the two contours
     # are the same or very similar).
     #
-    if master_hull['status'].startswith('qa'):
+    if chs_status.is_qa(master_hull['status']):
         for qahull in qahulls:
             draw_hull(ax_trans, qahull, qa_color, 1, 'dashed')
     else:
@@ -767,7 +768,7 @@ def draw_hulls_and_images(master_hull,
     qatitle = None
     qacol = 'r'
 
-    if master_hull['status'].startswith('qa'):
+    if chs_status.is_qa(master_hull['status']):
         qatitle = master_hull['status'].upper()
 
     page_idx = 0
@@ -1181,7 +1182,7 @@ def draw_ensemble_outline(ensemble, mhulls, hulls, qas, fov3files,
     #
     title_col = 'k'
     for mid, mhull in mhulls.items():
-        if mhull['status'].startswith('qa'):
+        if chs_status.is_qa(mhull['status']):
             title_col = 'r'
             continue
 

@@ -32,6 +32,7 @@ import pycrates
 
 import chs_utils as utils
 import chs_review_plots_mpl as plots
+import chs_status
 
 # do this after import plots above, to set the backend
 from matplotlib import pyplot as plt
@@ -161,7 +162,7 @@ def update_review_products(chsfile, outdir,
     qas = {}
     for mid in mids:
         src = hulllist[mid]
-        if src['status'].startswith('qa'):
+        if chs_status.is_qa(src['status']):
             qas[mid] = read_qa_hulls(chsdir, revision,
                                      src['master_id'])
 

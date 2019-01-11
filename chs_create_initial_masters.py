@@ -424,7 +424,7 @@ def write_hulls(ensemble, outfile, hullcpts, hullareas, outlines,
     #
     nmax = 0
     for outline in outlines:
-        if outline['status'].startswith('qa'):
+        if chs_status.is_qa(outline['status']):
             continue
 
         eqpos = outline['eqpos']
@@ -477,7 +477,7 @@ def write_hulls(ensemble, outfile, hullcpts, hullareas, outlines,
 
         base_stack.append(bs)
 
-        if outline['status'].startswith('qa'):
+        if chs_status.is_qa(outline['status']):
             nvertex.append(0)
             eqpos.append(None)
 
@@ -546,7 +546,7 @@ def dump_qa(ensemble, outdir, ctr, outline,
 
     """
 
-    assert outline['status'].startswith('qa')
+    assert chs_status.is_qa(outline['status'])
     assert outline['eqpos'] is not None
     assert outline['pos'] is not None
     assert outline['base_stack'] is not None
@@ -866,7 +866,7 @@ def process_ensemble(ensemblefile, ensemble, outdir,
         print("NOTE: found {} master overlaps -> QA".format(noverlap))
 
     for i, outline in enumerate(outlines):
-        if outline['status'].startswith('qa'):
+        if chs_status.is_qa(outline['status']):
             dump_qa(ensemble, outdir, i + 1, outline,
                     creator=creator,
                     revision=revision,

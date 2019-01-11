@@ -157,7 +157,7 @@ def create_review_products(chsfile, outdir,
     qas = {}
     for mid in mids:
         src = hulllist[mid]
-        if src['status'].startswith('qa'):
+        if chs_status.is_qa(src['status']):
             qas[mid] = read_qa_hulls(chsdir, revision,
                                      src['master_id'])
 
@@ -266,7 +266,7 @@ def create_review_products(chsfile, outdir,
                                                 evtscale=evtscale,
                                                 qahulls=qahulls)
 
-        if src['status'].startswith('qa'):
+        if chs_status.is_qa(src['status']):
             action = 'manual'
         else:
             action = ''

@@ -25,6 +25,7 @@ import paramio
 import pycrates
 
 import chs_utils as utils
+import chs_status
 
 
 # --- START: Kenny's convex-hull code ---
@@ -1171,7 +1172,7 @@ def make_merged_hull(hullcpts, mrgsrc3dir,
     #    status=error    - returned unexpected data
     #    status=qa...    - there's a problem
     #
-    if out['status'].startswith('qa'):
+    if chs_status.is_qa(out['status']):
         outline = {'status': out['status'],
                    'eqpos': out['hulls_cel'],
                    'pos': out['hulls_sky'],
