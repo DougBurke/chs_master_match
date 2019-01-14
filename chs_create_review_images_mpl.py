@@ -103,6 +103,7 @@ def create_review_products(chsfile, outdir,
         The FITS file containing the master hull data.
     outdir : str
         The output directory, which may be created by the routine.
+        The last component *must* be the ensemble name.
     mrgsrc3dir, stkevt3dir, stkfov3dir, xmdat3dir : str
         The directory names containing the mrgsrc3, evt3, fov3, and
         xmdat3 files for the stacks. The names must match
@@ -126,6 +127,16 @@ def create_review_products(chsfile, outdir,
     ensemble = metadata['ensemble']
     ensemblemap = metadata['ensemblemap']
     revision = metadata['revision']
+
+    # NOTE: utils.save_master requires the "user directory" - i.e. the
+    # parent of outdir - and this means that we assume that outdir
+    # ends in the ensemble name. We
+    #
+    if os.path.basename(outdir) != ensemble:
+        raise IOError("Expected outdir={} ".format(outdir) +
+                      "to end with {}".format(ensemble))
+
+    userdir = os.path.normpath(os.path.join(outdir, '..'))
 
     mids = sorted(hulllist.keys())
 
@@ -279,7 +290,8 @@ def create_review_products(chsfile, outdir,
                    'useraction': action,
                    'usernotes': ''
                    }
-        outfile = utils.save_master(outdir, ensdata)
+
+        outfile = utils.save_master(userdir, ensdata)
         print("Created: {}".format(outfile))
 
 
