@@ -54,6 +54,8 @@ def doit(indir, mrgsrc3dir="", stkevt3dir="", stkfov3dir="",
         print("No ensemble master-hull files found. That's surprising.")
         return
 
+    infiles = sorted(infiles)
+
     failed = []
     for i, infile in enumerate(infiles):
 
