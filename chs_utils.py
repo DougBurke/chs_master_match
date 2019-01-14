@@ -1055,12 +1055,13 @@ def read_master_hulls(chsfile, mrgsrc3dir):
     for mid, status, base_stk, nvertex, eqpos in zs:
         assert mid not in hulllist
 
-        if nvertex == 0:
-            # Write out a debug message so can track when this is used
-            print("DBG: returning None for eqpos as status={}".format(status))
-            assert chs_status.is_qa(status), status
-            assert eqpos.shape == (2, ), str(eqpos.shape)
-            eqvals = None
+        if eqpos.shape == (2,):
+            # For the case when all rows are QA (so all have
+            # NVERTEX=0), in which case one of the dimensions
+            # has been lost (or can not easily be handled by
+            # Crates; it isn't clear which).
+            #
+            eqvals = np.asarray([])
         else:
             eqvals = eqpos[:, :nvertex]
 
