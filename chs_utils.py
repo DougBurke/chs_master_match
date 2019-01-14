@@ -1746,8 +1746,27 @@ def save_master(userdir, data):
 
         store['npages'] = npages
 
+    # Convert any numpy ints to normal ints, since the NumPy ones
+    # can not be serialized to JSON. There could be other NumPy
+    # types to convert, but leave until needed.
+    #
+    for k, v in store.items():
+        if type(v) in [np.int8, np.int16, np.int32, np.int64]:
+            store[k] = int(v)
+
+    try:
+        jstr = json.dumps(store)
+    except TypeError as te:
+        # Assume it's a JSON encoding issue
+        print("\nDBG: key,value,types are:")
+        for k, v in store.items():
+            print("{}\t{}\t{}".format(k, v, type(v)))
+
+        print("")
+        raise te
+
     with open(outfile, 'w') as fh:
-        fh.write(json.dumps(store))
+        fh.write(jstr)
 
     return outfile
 
