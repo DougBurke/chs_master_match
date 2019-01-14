@@ -1055,10 +1055,19 @@ def read_master_hulls(chsfile, mrgsrc3dir):
     for mid, status, base_stk, nvertex, eqpos in zs:
         assert mid not in hulllist
 
+        if nvertex == 0:
+            # Write out a debug message so can track when this is used
+            print("DBG: returning None for eqpos as status={}".format(status))
+            assert chs_status.is_qa(status), status
+            assert eqpos.shape == (2, ), str(eqpos.shape)
+            eqvals = None
+        else:
+            eqvals = eqpos[:, :nvertex]
+
         hulllist[mid] = {'master_id': int(mid),
                          'status': status,
                          'base_stk': base_stk,
-                         'eqpos': eqpos[:, :nvertex]}
+                         'eqpos': eqvals}
 
     metadata = {'ensemble': cr.get_key_value('ENSEMBLE'),
                 'ensemblemap': ensemblemap,
