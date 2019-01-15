@@ -84,6 +84,11 @@ except ImportError:
     sys.stderr.write("Needs crates!\n")
     sys.exit(1)
 
+# Assume that if we have crates we have stack module, and since stk
+# is overused here, rename it.
+#
+import stk as stkmodule
+
 import chs_utils as utils
 import chs_status
 
@@ -1556,20 +1561,43 @@ class CHSHandler(BaseHTTPRequestHandler):
 
         out = {}
 
+        # could have given stacks=a&stacks=b,... or stacks=a,b,...
+        # (or a combination) so need to separate out
+        #
+        stacklist = []
         for stack in stacks:
+            stacklist.extend(stkmodule.build(stack))
+
+        for stack in stacklist:
+
+            # simple check; really would like to whitelist the stacks
+            #
+            if not (stack.startswith('acisf') or stack.startswith('hrcf')):
+                utils.errlog("Unrecognied stack when asking for " +
+                             "PSFs: {}".format(stack))
+                continue
+
             # hard code the name
             infile = os.path.join(xmdatdir, stack,
                                   '{}N000_xmdat3.fits'.format(stack))
 
-            # No VFS in the file name so can do an existence check
-            if not os.path.exists(infile):
-                self.send_as_json(None)
-                return
-
+            # No VFS in the file name so could do an existance check,
+            # but may as well try reading it in.
+            #
             try:
                 cr = pycrates.read_file(infile)
             except IOError:
                 utils.errlog("Unable to open xmdat file: {}".format(infile))
+
+                # Ensure we send something back to the server
+                # TODO: check whether the JS special cases missing
+                #       data (ie is this return value expected)
+                #
+                # Returning None means we can differentiate between
+                # "stack has no detections" and "no XMDAT file found"
+                #
+                # out[stack] = []
+                out[stack] = None
                 continue
 
             # ra,dec in decmal degrees

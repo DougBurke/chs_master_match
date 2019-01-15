@@ -342,7 +342,7 @@ function change_hull_in_js9(hull, layer, idval, win) {
 
 function addPSFRegions(stack, win) {
   const psfs = settings.regionstore.stackpsfs[stack];
-  if (typeof psfs === "undefined") {
+  if (psfs === null) {
     return;
   }
 
@@ -667,7 +667,9 @@ function panner_html(id) {
 
 function psf_html(stack, id) {
   const psfs = settings.regionstore.stackpsfs[stack];
-  if (typeof psfs === "undefined") { return ""; }
+  if (psfs === null) {
+    return "";
+  }
 
   let html = "<span class='colorize'>PSF: ";
   html += "<select id='" + id + "PSFColor'>";
@@ -1421,6 +1423,33 @@ function loadPSFs() {
 //
 function updatePSFs(json) {
   settings.regionstore.stackpsfs = json;
+
+  const missing = [];
+  for (const stack in json) {
+    // if (json[stack].length === 0) {
+    if (settings.regionstore.stackpsfs[stack] === null) {
+      missing.push(stack);
+    }
+  }
+  if (missing.length === 0) {
+    return;
+  }
+
+  const els = document.getElementsByClassName('info');
+  if (els.length !== 1) {
+    alert("Internal error: updatePSFs does not understand structure of page");
+    return;
+  }
+
+  // It is either missing or there is no PSF data for this
+  // stack. It would be nice to change stack names to numbers
+  // but is it worth it? It's also not clear that have the
+  // data to do this here.
+  //
+  // els[0].innerHTML = "<p>Note: no PSF data for: " +
+  els[0].innerHTML = "<p>Note: missing PSF data for: " +
+	  missing.join(', ') + "</p>" + els[0].innerHTML;
+
 }
 
 // Load in the stack polygon data /polys/ endpoint.
