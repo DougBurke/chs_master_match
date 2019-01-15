@@ -1415,7 +1415,7 @@ function loadPSFs() {
 
 }
 
-// The PSF data has been loaden. json should be a dictionary
+// The PSF data has been loaded. json should be a dictionary
 // with keys being the stack ids and the values a list of
 // dictionaries, one for each PSF.
 //
