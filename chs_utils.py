@@ -902,7 +902,55 @@ def convert_to_key(ensemblemap, stack, component):
                          " in:\n{}".format(ensemblemap))
 
 
-def read_master_hulls(chsfile, mrgsrc3dir):
+def find_nvertices(pos):
+    """How many useful points are in pos?
+
+    Parameters
+    ----------
+    pos : ndarray, 2 by n
+        The input array. Invalid values are assumed to be NaN.
+
+    Returns
+    -------
+    nvertex : n
+        The number of points that are valid (3 <= nvertex <= n)
+    """
+
+    assert pos.ndim == 2
+    assert pos.shape[0] == 2, pos
+    npts = pos.shape[1]
+    assert npts > 2, pos
+
+    x = pos[0]
+    y = pos[1]
+    i1 = np.isfinite(x)
+    i2 = np.isfinite(y)
+    assert np.all(i1 == i2)
+
+    if np.all(i1):
+        return npts
+
+    ids, = np.where(~i1)
+
+    # Assume that the nan's appear at the end of the array
+    assert np.all(~i1[ids]), pos
+
+    idval = ids[0]
+    assert idval > 3, idval
+
+    assert np.isnan(x[idval])
+    assert np.isfinite(x[idval - 1])
+
+    # check it is closed
+    assert x[0] == x[idval - 1], (x, idval, x[idval])
+    assert y[0] == y[idval - 1], (y, idval, y[idval])
+
+    return idval
+
+
+def read_master_hulls(chsfile, mrgsrc3dir,
+                      ignorestatus=False,
+                      ignorenvertex=False):
     """Read in hull information.
 
     Parameters
@@ -914,6 +962,15 @@ def read_master_hulls(chsfile, mrgsrc3dir):
         The location of the directory containing the mrgsrc3 file
         for this ensemble. The version is expected to match that used
         to create the chsfile; a warning is displayed if it is not.
+    ignorestatus : bool, optional
+        If set, the STATUS value for each master hull is set to
+        chs_utils.DONE, and a screen message is written out saying
+        what the old value was.
+    ignorenvertex : bool, optional
+        If set, the NVERTEX value of the HULLLIST block is not used
+        to filter the position array. Instead a manual check is used.
+        This is because the output from Joe's code hasn't adjusted
+        this value.
 
     Returns
     -------
@@ -1055,6 +1112,10 @@ def read_master_hulls(chsfile, mrgsrc3dir):
     for mid, status, base_stk, nvertex, eqpos in zs:
         assert mid not in hulllist
 
+        if ignorestatus:
+            print(" master={} status was={}".format(mid, status))
+            status = chs_status.DONE;
+
         if eqpos.shape == (2,):
             # For the case when all rows are QA (so all have
             # NVERTEX=0), in which case one of the dimensions
@@ -1063,6 +1124,9 @@ def read_master_hulls(chsfile, mrgsrc3dir):
             #
             eqvals = np.asarray([])
         else:
+            if ignorenvertex:
+                nvertex = find_nvertices(eqpos)
+
             eqvals = eqpos[:, :nvertex]
 
         hulllist[mid] = {'master_id': int(mid),

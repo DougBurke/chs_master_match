@@ -7,6 +7,8 @@ Usage:
       --mrgsrc3dir <dirname>
       --stkevt3dir <dirname>
       --stkfov3dir <dirname>
+      --ignorestatus
+      --ignorenvertex
 
 Aim:
 
@@ -30,6 +32,13 @@ where revision is the CHSVER keyword in chsfile, and revision,
 master_id, and page_number are written out as three character,
 zero-padded strings. scale is the scaling used in the image display
 and can be one of log10, sqrt, none.
+
+The --ignorestatus flag ignores the STATUS field of each master,
+assuming it is 'done'. This is for a quick review of the products,
+since Joe's script never needed to use this particular column.
+
+The --ignorenvertex flag ignores the NVERTEX column of the HULLLIST
+block, since this also hasn't been updated by Joe's code.
 
 """
 
@@ -94,7 +103,9 @@ def read_qa_hulls(qadir, revision, master_id):
 
 def create_review_products(chsfile, outdir,
                            mrgsrc3dir, stkevt3dir,
-                           stkfov3dir, xmdat3dir):
+                           stkfov3dir, xmdat3dir,
+                           ignorestatus=False,
+                           ignorenvertex=False):
     """Create the review products.
 
     Parameters
@@ -110,6 +121,15 @@ def create_review_products(chsfile, outdir,
         <stack>*<type>.fits[.gz] and there can only be one per stack
         per type. The xmdat3 files are optional and are stored as
         <stack>/<stack>N000_xmdat3.fits.
+    ignorestatus : bool, optional
+        If set, the STATUS value for each master hull is set to
+        chs_utils.DONE, and a screen message is written out saying
+        what the old value was.
+    ignorenvertex : bool, optional
+        If set, the NVERTEX value of the HULLLIST block is not used
+        to filter the position array. Instead a manual check is used.
+        This is because the output from Joe's code hasn't adjusted
+        this value.
 
     Notes
     -----
@@ -122,7 +142,9 @@ def create_review_products(chsfile, outdir,
     chsdir = os.path.dirname(chsfile)
 
     hullmatch, hulllist, metadata = utils.read_master_hulls(chsfile,
-                                                            mrgsrc3dir)
+                                                            mrgsrc3dir,
+                                                            ignorestatus=ignorestatus,
+                                                            ignorenvertex=ignorenvertex)
 
     ensemble = metadata['ensemble']
     ensemblemap = metadata['ensemblemap']
@@ -321,10 +343,17 @@ if __name__ == "__main__":
                         default="/data/L3/chs_master_match/input/xmdat3",
                         help="The xmdat3 directory: default %(default)s")
 
+    parser.add_argument("--ignorestatus", action='store_true',
+                        help="Set the STATUS column to 'done'")
+    parser.add_argument("--ignorenvertex", action='store_true',
+                        help="Ignore the NVERTEX column")
+
     args = parser.parse_args(sys.argv[1:])
 
     create_review_products(args.chsfile, args.outdir,
                            mrgsrc3dir=args.mrgsrc3dir,
                            stkevt3dir=args.stkevt3dir,
                            stkfov3dir=args.stkfov3dir,
-                           xmdat3dir=args.xmdat3dir)
+                           xmdat3dir=args.xmdat3dir,
+                           ignorestatus=args.ignorestatus,
+                           ignorenvertex=args.ignorenvertex)
